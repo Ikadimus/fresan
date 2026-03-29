@@ -1,0 +1,5 @@
+{
+  "name": "Fresan Geradores - Gestão",
+  "description": "Sistema completo para controle de RIG (Registro Individual de Gerador), checklists dinâmicos, manutenções e locações para Fresan Geradores.",
+  "requestFramePermissions": []
+}
