@@ -19,7 +19,11 @@ import {
   FileText,
   PenTool,
   Trash2,
-  DollarSign
+  DollarSign,
+  Mail,
+  Lock,
+  AlertCircle,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import SignaturePad from 'react-signature-pad-wrapper';
@@ -161,7 +165,7 @@ export default function App() {
   
   const [generators, setGenerators] = useState<Generator[]>(mockGenerators);
   const [templates, setTemplates] = useState<ChecklistTemplate[]>(mockChecklistTemplates);
-  const [employees] = useState<Employee[]>(mockEmployees);
+  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
   const [rentals, setRentals] = useState<Rental[]>(mockRentals);
   const [clients, setClients] = useState<Client[]>(mockClients);
   const [signedDocuments, setSignedDocuments] = useState<SignedDocument[]>([
@@ -241,6 +245,14 @@ export default function App() {
   const [selectedGenerator, setSelectedGenerator] = useState<Generator | null>(null);
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
 
+  // Authentication states
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<Employee | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   // New feature states
   const [showNewGeneratorForm, setShowNewGeneratorForm] = useState(false);
   const [showNewTemplateForm, setShowNewTemplateForm] = useState(false);
@@ -250,6 +262,11 @@ export default function App() {
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [showRentalDetailModal, setShowRentalDetailModal] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<SignedDocument | null>(null);
+  const [printingDoc, setPrintingDoc] = useState<SignedDocument | null>(null);
+  
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
+  const [isEditingEmployee, setIsEditingEmployee] = useState(false);
+  const [editingEmployeeData, setEditingEmployeeData] = useState<Employee | null>(null);
 
   const [showChecklistSelector, setShowChecklistSelector] = useState(false);
   const [showChecklistForm, setShowChecklistForm] = useState(false);
@@ -315,31 +332,276 @@ export default function App() {
     alert('Documento assinado e salvo com sucesso! Você pode baixá-lo na aba de Documentação ou no Histórico de Checklists.');
   };
 
-  const generatePDF = async (doc: SignedDocument) => {
-    const elementId = `pdf-content-${doc.id}`;
-    const element = document.getElementById(elementId);
-    
-    if (!element) {
-      console.error('PDF element not found:', elementId);
-      alert('Erro interno: Elemento do PDF não encontrado.');
-      return;
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const user = employees.find(emp => emp.email === loginEmail && emp.password === loginPassword);
+    if (user) {
+      setIsAuthenticated(true);
+      setCurrentUser(user);
+      setLoginError('');
+    } else {
+      setLoginError('E-mail ou senha incorretos.');
     }
+  };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setLoginEmail('');
+    setLoginPassword('');
+  };
+
+  const handleUpdateEmployee = () => {
+    if (!editingEmployeeData) return;
+    setEmployees(employees.map(emp => emp.id === editingEmployeeData.id ? editingEmployeeData : emp));
+    setViewingEmployee(editingEmployeeData);
+    setIsEditingEmployee(false);
+  };
+
+  const renderLogin = () => (
+    <div className="min-h-screen bg-black flex items-center justify-center p-6">
+      <Card className="w-full max-w-md p-8 bg-white transition-all duration-500 hover:shadow-[0_0_50px_rgba(242,169,0,0.35)]">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-brand-primary/20">
+            <FresanLogo size={40} />
+          </div>
+          <h1 className="text-2xl font-black text-brand-secondary tracking-tighter">FRESAN GERADORES</h1>
+          <p className="text-zinc-500 text-sm font-medium">Sistema de Gestão Técnica</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">E-mail</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+              <input 
+                type="email" 
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
+                placeholder="seu@email.com"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Senha</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+              <input 
+                type="password" 
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+          </div>
+
+          {loginError && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs font-bold">
+              <AlertCircle size={14} />
+              {loginError}
+            </div>
+          )}
+
+          <button 
+            type="submit"
+            className="w-full py-4 bg-brand-primary text-brand-secondary font-black rounded-xl shadow-lg shadow-brand-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs"
+          >
+            Entrar no Sistema
+          </button>
+        </form>
+
+        <div className="mt-8 pt-6 border-t border-zinc-100 text-center">
+          <p className="text-xs text-zinc-400">© 2026 Fresan Geradores. Todos os direitos reservados.</p>
+        </div>
+      </Card>
+    </div>
+  );
+
+  const renderEmployeeDetailModal = () => {
+    if (!viewingEmployee) return null;
+    const emp = viewingEmployee;
+
+    return (
+      <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+        >
+          <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50">
+            <h3 className="text-xl font-bold text-zinc-900">Detalhes do Funcionário</h3>
+            <button 
+              onClick={() => {
+                setViewingEmployee(null);
+                setIsEditingEmployee(false);
+              }}
+              className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-8">
+            {isEditingEmployee ? (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Nome Completo</label>
+                  <input 
+                    type="text" 
+                    value={editingEmployeeData?.name || ''}
+                    onChange={(e) => setEditingEmployeeData(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">E-mail</label>
+                  <input 
+                    type="email" 
+                    value={editingEmployeeData?.email || ''}
+                    onChange={(e) => setEditingEmployeeData(prev => prev ? { ...prev, email: e.target.value } : null)}
+                    className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Cargo</label>
+                  <select 
+                    value={editingEmployeeData?.role || 'Técnico'}
+                    onChange={(e) => setEditingEmployeeData(prev => prev ? { ...prev, role: e.target.value as any } : null)}
+                    className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
+                  >
+                    <option value="Admin">Admin</option>
+                    <option value="Técnico">Técnico</option>
+                    <option value="Operador">Operador</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Senha de Acesso</label>
+                  <input 
+                    type="text" 
+                    value={editingEmployeeData?.password || ''}
+                    onChange={(e) => setEditingEmployeeData(prev => prev ? { ...prev, password: e.target.value } : null)}
+                    className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-sm"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={() => setIsEditingEmployee(false)}
+                    className="flex-1 py-3 border border-zinc-200 text-zinc-600 font-bold rounded-xl hover:bg-zinc-50 transition-all text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={handleUpdateEmployee}
+                    className="flex-1 py-3 bg-brand-primary text-brand-secondary font-bold rounded-xl hover:scale-[1.02] transition-all text-sm"
+                  >
+                    Salvar Alterações
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-zinc-100 rounded-3xl flex items-center justify-center text-zinc-400 font-black text-2xl">
+                    {emp.name.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div>
+                    <h4 className="text-2xl font-black text-zinc-900 tracking-tight">{emp.name}</h4>
+                    <span className={`inline-block mt-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                      emp.role === 'Admin' ? 'bg-purple-100 text-purple-600' : 'bg-zinc-100 text-zinc-600'
+                    }`}>
+                      {emp.role}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">E-mail de Acesso</p>
+                    <p className="text-sm font-bold text-zinc-700">{emp.email}</p>
+                  </div>
+                  <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Senha</p>
+                    <p className="text-sm font-bold text-zinc-700">••••••••</p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    setIsEditingEmployee(true);
+                    setEditingEmployeeData(emp);
+                  }}
+                  className="w-full py-4 bg-zinc-900 text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all"
+                >
+                  <Settings size={18} />
+                  Editar Informações
+                </button>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </div>
+    );
+  };
+
+  const generatePDF = async (doc: SignedDocument) => {
     try {
-      // Wait a bit for any pending renders
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Set the document to be printed to trigger the global template render
+      setPrintingDoc(doc);
+      
+      // Wait for React to render the template and for images/signatures to be ready
+      // Increased timeout for absolute certainty
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const elementId = `global-pdf-content`;
+      const element = document.getElementById(elementId);
+      
+      if (!element) {
+        throw new Error('Elemento de impressão global não encontrado no DOM');
+      }
+
+      // Ensure the element is technically "visible" and has dimensions for capture
+      const container = element.parentElement;
+      if (container) {
+        container.style.display = 'block';
+        container.style.opacity = '1';
+        container.style.visibility = 'visible';
+        container.style.left = '0'; // Bring it into the viewport area but it's still behind or transparent? 
+        // Actually, keeping it at left-0 but opacity 1 for the capture duration is safest.
+      }
 
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
-        allowTaint: true,
         backgroundColor: '#ffffff',
-        windowWidth: 800, // Fixed width for consistent rendering
+        windowWidth: 1200,
+        onclone: (clonedDoc) => {
+          // Additional safety: ensure the cloned element is visible in the clone
+          const clonedElement = clonedDoc.getElementById(elementId);
+          if (clonedElement && clonedElement.parentElement) {
+            clonedElement.parentElement.style.display = 'block';
+            clonedElement.parentElement.style.opacity = '1';
+            clonedElement.parentElement.style.visibility = 'visible';
+            clonedElement.parentElement.style.left = '0';
+          }
+        }
       });
 
+      // Hide container again immediately after capture
+      if (container) {
+        container.style.display = 'none';
+        container.style.opacity = '0';
+        container.style.visibility = 'hidden';
+        container.style.left = '-9999px';
+      }
+
       const imgData = canvas.toDataURL('image/png');
-      
       const pdf = new jsPDF('p', 'mm', 'a4');
       
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -347,15 +609,143 @@ export default function App() {
       
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       
-      // Sanitize filename
       const safeTitle = doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       const fileName = `Relatorio_${safeTitle}_${format(new Date(doc.date), 'ddMMyyyy')}.pdf`;
       
       pdf.save(fileName);
+      setPrintingDoc(null);
     } catch (error) {
-      console.error('Erro detalhado ao gerar PDF:', error);
-      alert('Erro ao gerar o PDF. Por favor, tente novamente ou use a visualização em tela.');
+      console.error('Erro crítico ao gerar PDF:', error);
+      setPrintingDoc(null);
+      alert('Erro definitivo ao gerar o PDF. Por favor, utilize a visualização em tela (ícone de seta) para conferir os dados ou tente em outro navegador.');
     }
+  };
+
+  const renderGlobalPDFTemplate = () => {
+    if (!printingDoc) return null;
+    const doc = printingDoc;
+
+    return (
+      <div className="fixed top-0 left-[-9999px] pointer-events-none z-[-100] opacity-0 invisible" style={{ display: 'none' }}>
+        <div id="global-pdf-content" className="w-[210mm] p-10 bg-white shadow-none" style={{ color: '#18181b', backgroundColor: '#ffffff', fontFamily: 'sans-serif' }}>
+          {/* PDF Header */}
+          <div className="flex justify-between items-start pb-6 mb-8" style={{ borderBottom: '2px solid #f2a900' }}>
+            <div className="flex items-center gap-4">
+              <FresanLogo size={60} />
+              <div>
+                <h1 className="text-3xl font-black tracking-tighter" style={{ color: '#1a1a1a', margin: 0 }}>Fresan</h1>
+                <p className="text-sm font-bold uppercase tracking-widest" style={{ color: '#71717a', margin: '-4px 0 0 0' }}>Geradores</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <h2 className="text-xl font-bold" style={{ color: '#18181b', margin: 0 }}>Relatório Técnico</h2>
+              <p className="text-sm" style={{ color: '#71717a', margin: 0 }}>Documento: {doc.id}</p>
+              <p className="text-sm" style={{ color: '#71717a', margin: 0 }}>Data: {format(new Date(doc.date), "dd/MM/yyyy HH:mm")}</p>
+            </div>
+          </div>
+
+          {/* Info Section */}
+          <div className="grid grid-cols-2 gap-8 mb-8">
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider pb-1" style={{ color: '#a1a1aa', borderBottom: '1px solid #f4f4f5' }}>Informações do Equipamento</h3>
+              <p className="text-sm" style={{ margin: '4px 0' }}><strong>Gerador:</strong> {doc.generatorId}</p>
+              <p className="text-sm" style={{ margin: '4px 0' }}><strong>Modelo:</strong> {generators.find(g => g.id === doc.generatorId)?.model || 'N/A'}</p>
+              <p className="text-sm" style={{ margin: '4px 0' }}><strong>Série:</strong> {generators.find(g => g.id === doc.generatorId)?.serialNumber || 'N/A'}</p>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider pb-1" style={{ color: '#a1a1aa', borderBottom: '1px solid #f4f4f5' }}>Tipo de Atendimento</h3>
+              <p className="text-sm font-bold" style={{ color: '#f2a900', margin: '4px 0' }}>{doc.title}</p>
+              <p className="text-sm" style={{ margin: '4px 0' }}><strong>Técnico:</strong> {doc.technicianName}</p>
+            </div>
+          </div>
+
+          {/* Maintenance Details if any */}
+          {doc.maintenanceDetails && (
+            <div className="mb-8">
+              <h3 className="text-xs font-bold uppercase tracking-wider pb-1 mb-4" style={{ color: '#a1a1aa', borderBottom: '1px solid #f4f4f5' }}>Serviços e Peças</h3>
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #f4f4f5' }}>
+                <table className="w-full text-left text-sm" style={{ borderCollapse: 'collapse' }}>
+                  <thead style={{ backgroundColor: '#fafafa' }}>
+                    <tr>
+                      <th className="px-4 py-2 font-bold" style={{ borderBottom: '1px solid #f4f4f5' }}>Descrição</th>
+                      <th className="px-4 py-2 font-bold text-right" style={{ borderBottom: '1px solid #f4f4f5' }}>Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody style={{ backgroundColor: '#ffffff' }}>
+                    {doc.maintenanceDetails.parts?.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #f4f4f5' }}>
+                        <td className="px-4 py-2">Peça: {p.name}</td>
+                        <td className="px-4 py-2 text-right">R$ {p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                    {doc.maintenanceDetails.services?.map(s => (
+                      <tr key={s.id} style={{ borderBottom: '1px solid #f4f4f5' }}>
+                        <td className="px-4 py-2">Serviço: {s.name}</td>
+                        <td className="px-4 py-2 text-right">R$ {s.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                    <tr className="font-bold" style={{ backgroundColor: '#fafafa' }}>
+                      <td className="px-4 py-2">TOTAL</td>
+                      <td className="px-4 py-2 text-right" style={{ color: '#f2a900' }}>
+                        R$ {doc.maintenanceDetails.cost?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 p-4 rounded-xl" style={{ backgroundColor: '#fafafa', border: '1px solid #f4f4f5' }}>
+                <p className="text-xs font-bold uppercase mb-1" style={{ color: '#a1a1aa' }}>Relato de Execução</p>
+                <p className="text-sm" style={{ color: '#3f3f46', margin: 0 }}>{doc.maintenanceDetails.description}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Checklist if any */}
+          {doc.fullChecklist && (
+            <div className="mb-8">
+              <h3 className="text-xs font-bold uppercase tracking-wider pb-1 mb-4" style={{ color: '#a1a1aa', borderBottom: '1px solid #f4f4f5' }}>Questionário Técnico</h3>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+                {templates.find(t => t.id === doc.fullChecklist?.templateId)?.questions.map(q => (
+                  <div key={q.id} className="flex justify-between py-1" style={{ borderBottom: '1px solid #fafafa' }}>
+                    <span className="text-xs" style={{ color: '#52525b' }}>{q.text}</span>
+                    <span className="text-xs font-bold" style={{ color: '#18181b' }}>
+                      {doc.fullChecklist?.answers[q.id] === 'true' ? 'SIM' : 
+                       doc.fullChecklist?.answers[q.id] === 'false' ? 'NÃO' : 
+                       doc.fullChecklist?.answers[q.id] || '-'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Signatures */}
+          <div className="grid grid-cols-2 gap-12 mt-16">
+            <div className="text-center">
+              <div className="mb-2 min-h-[60px] flex items-center justify-center" style={{ borderBottom: '1px solid #d4d4d8' }}>
+                <img src={doc.technicianSignature} alt="Assinatura Técnico" className="max-h-16" />
+              </div>
+              <p className="text-sm font-bold" style={{ color: '#18181b', margin: '4px 0 0 0' }}>{doc.technicianName}</p>
+              <p className="text-xs" style={{ color: '#71717a', margin: 0 }}>Técnico Fresan</p>
+            </div>
+            <div className="text-center">
+              <div className="mb-2 min-h-[60px] flex items-center justify-center" style={{ borderBottom: '1px solid #d4d4d8' }}>
+                <img src={doc.responsibleSignature} alt="Assinatura Responsável" className="max-h-16" />
+              </div>
+              <p className="text-sm font-bold" style={{ color: '#18181b', margin: '4px 0 0 0' }}>{doc.responsibleName}</p>
+              <p className="text-xs" style={{ color: '#71717a', margin: 0 }}>Responsável Cliente</p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="mt-20 pt-6 text-center" style={{ borderTop: '1px solid #f4f4f5' }}>
+            <p className="text-[10px] uppercase tracking-widest" style={{ color: '#a1a1aa', margin: 0 }}>
+              Fresan Geradores • Documento Gerado em {format(new Date(), "dd/MM/yyyy HH:mm")}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderDocumentation = () => {
@@ -421,126 +811,6 @@ export default function App() {
                       >
                         <ChevronRight size={20} />
                       </button>
-                    </div>
-                  </div>
-                  {/* Hidden PDF Template - Fixed visibility for html2canvas */}
-                  <div className="fixed top-0 left-0 opacity-0 pointer-events-none z-[-1]">
-                    <div id={`pdf-content-${doc.id}`} className="w-[210mm] p-10 bg-white text-zinc-900 font-sans">
-                      {/* PDF Header */}
-                      <div className="flex justify-between items-start border-b-2 border-brand-primary pb-6 mb-8">
-                        <div className="flex items-center gap-4">
-                          <FresanLogo size={60} />
-                          <div>
-                            <h1 className="text-3xl font-black tracking-tighter text-brand-secondary">Fresan</h1>
-                            <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest -mt-1">Geradores</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <h2 className="text-xl font-bold text-zinc-900">Relatório Técnico</h2>
-                          <p className="text-sm text-zinc-500">Documento: {doc.id}</p>
-                          <p className="text-sm text-zinc-500">Data: {format(new Date(doc.date), "dd/MM/yyyy HH:mm")}</p>
-                        </div>
-                      </div>
-
-                      {/* Info Section */}
-                      <div className="grid grid-cols-2 gap-8 mb-8">
-                        <div className="space-y-2">
-                          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1">Informações do Equipamento</h3>
-                          <p className="text-sm"><strong>Gerador:</strong> {doc.generatorId}</p>
-                          <p className="text-sm"><strong>Modelo:</strong> {generators.find(g => g.id === doc.generatorId)?.model || 'N/A'}</p>
-                          <p className="text-sm"><strong>Série:</strong> {generators.find(g => g.id === doc.generatorId)?.serialNumber || 'N/A'}</p>
-                        </div>
-                        <div className="space-y-2">
-                          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1">Tipo de Atendimento</h3>
-                          <p className="text-sm font-bold text-brand-primary">{doc.title}</p>
-                          <p className="text-sm"><strong>Técnico:</strong> {doc.technicianName}</p>
-                        </div>
-                      </div>
-
-                      {/* Maintenance Details if any */}
-                      {doc.maintenanceDetails && (
-                        <div className="mb-8">
-                          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1 mb-4">Serviços e Peças</h3>
-                          <div className="border border-zinc-100 rounded-xl overflow-hidden">
-                            <table className="w-full text-left text-sm">
-                              <thead className="bg-zinc-50">
-                                <tr>
-                                  <th className="px-4 py-2 font-bold">Descrição</th>
-                                  <th className="px-4 py-2 font-bold text-right">Valor</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-zinc-100">
-                                {doc.maintenanceDetails.parts?.map(p => (
-                                  <tr key={p.id}>
-                                    <td className="px-4 py-2">Peça: {p.name}</td>
-                                    <td className="px-4 py-2 text-right">R$ {p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                  </tr>
-                                ))}
-                                {doc.maintenanceDetails.services?.map(s => (
-                                  <tr key={s.id}>
-                                    <td className="px-4 py-2">Serviço: {s.name}</td>
-                                    <td className="px-4 py-2 text-right">R$ {s.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                  </tr>
-                                ))}
-                                <tr className="bg-zinc-50 font-bold">
-                                  <td className="px-4 py-2">TOTAL</td>
-                                  <td className="px-4 py-2 text-right text-brand-primary">
-                                    R$ {doc.maintenanceDetails.cost?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                          <div className="mt-4 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                            <p className="text-xs font-bold text-zinc-400 uppercase mb-1">Relato de Execução</p>
-                            <p className="text-sm text-zinc-700">{doc.maintenanceDetails.description}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Checklist if any */}
-                      {doc.fullChecklist && (
-                        <div className="mb-8">
-                          <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100 pb-1 mb-4">Questionário Técnico</h3>
-                          <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                            {templates.find(t => t.id === doc.fullChecklist?.templateId)?.questions.map(q => (
-                              <div key={q.id} className="flex justify-between border-b border-zinc-50 py-1">
-                                <span className="text-xs text-zinc-600">{q.text}</span>
-                                <span className="text-xs font-bold text-zinc-900">
-                                  {doc.fullChecklist?.answers[q.id] === 'true' ? 'SIM' : 
-                                   doc.fullChecklist?.answers[q.id] === 'false' ? 'NÃO' : 
-                                   doc.fullChecklist?.answers[q.id] || '-'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Signatures */}
-                      <div className="grid grid-cols-2 gap-12 mt-16">
-                        <div className="text-center">
-                          <div className="border-b border-zinc-300 mb-2 min-h-[60px] flex items-center justify-center">
-                            <img src={doc.technicianSignature} alt="Assinatura Técnico" className="max-h-16" />
-                          </div>
-                          <p className="text-sm font-bold text-zinc-900">{doc.technicianName}</p>
-                          <p className="text-xs text-zinc-500">Técnico Fresan</p>
-                        </div>
-                        <div className="text-center">
-                          <div className="border-b border-zinc-300 mb-2 min-h-[60px] flex items-center justify-center">
-                            <img src={doc.responsibleSignature} alt="Assinatura Responsável" className="max-h-16" />
-                          </div>
-                          <p className="text-sm font-bold text-zinc-900">{doc.responsibleName}</p>
-                          <p className="text-xs text-zinc-500">Responsável Cliente</p>
-                        </div>
-                      </div>
-
-                      {/* Footer */}
-                      <div className="mt-20 pt-6 border-t border-zinc-100 text-center">
-                        <p className="text-[10px] text-zinc-400 uppercase tracking-widest">
-                          Fresan Geradores - Documento Gerado Eletronicamente via GeroControl
-                        </p>
-                      </div>
                     </div>
                   </div>
                   <div className="mt-4 flex items-center gap-6">
@@ -2001,7 +2271,10 @@ export default function App() {
                 </td>
                 <td className="px-6 py-4 text-sm text-zinc-500">{emp.email}</td>
                 <td className="px-6 py-4 text-right">
-                  <button className="p-2 hover:bg-zinc-200 rounded-lg transition-colors text-zinc-400 hover:text-zinc-900">
+                  <button 
+                    onClick={() => setViewingEmployee(emp)}
+                    className="p-2 hover:bg-zinc-200 rounded-lg transition-colors text-zinc-400 hover:text-zinc-900"
+                  >
                     <Settings size={16} />
                   </button>
                 </td>
@@ -2158,13 +2431,17 @@ export default function App() {
     </div>
   );
 
+  if (!isAuthenticated) {
+    return renderLogin();
+  }
+
   return (
     <div className="min-h-screen bg-[#F2F2F2] flex flex-col font-sans text-zinc-900">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-brand-secondary border-b border-white/10 px-6 py-4 shadow-xl">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3 shrink-0 w-64">
+          <div className="flex items-center gap-3 shrink-0 md:w-64">
             <FresanLogo size={42} />
             <div className="flex flex-col leading-none">
               <h1 className="text-2xl font-black tracking-tighter text-white">Fresan</h1>
@@ -2172,8 +2449,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex items-center gap-2 no-scrollbar">
+          {/* Desktop Navigation */}
+          <nav className="hidden lg:flex items-center gap-2 no-scrollbar">
             <NavItem 
               icon={LayoutDashboard} 
               label="Dashboard" 
@@ -2212,20 +2489,107 @@ export default function App() {
             />
           </nav>
 
-          {/* User Profile */}
-          <div className="flex items-center justify-end gap-3 shrink-0 w-64">
+          {/* User Profile & Mobile Toggle */}
+          <div className="flex items-center justify-end gap-3 shrink-0 md:w-64">
             <div className="hidden md:block text-right">
-              <p className="text-xs font-bold text-white">Ricardo Lima</p>
-              <p className="text-[10px] text-zinc-400">Admin</p>
+              <p className="text-xs font-bold text-white">{currentUser?.name || 'Usuário'}</p>
+              <p className="text-[10px] text-zinc-400">{currentUser?.role || 'Acesso'}</p>
             </div>
-            <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-white font-bold text-xs border border-white/20">
-              RL
+            <div className="hidden sm:flex w-8 h-8 bg-white/10 rounded-full items-center justify-center text-white font-bold text-xs border border-white/20">
+              {currentUser?.name.split(' ').map(n => n[0]).join('') || 'U'}
             </div>
-            <button className="text-zinc-400 hover:text-white transition-colors">
-              <Settings size={18} />
+            <button 
+              onClick={handleLogout}
+              className="hidden sm:block text-zinc-400 hover:text-red-400 transition-colors p-2 hover:bg-white/5 rounded-lg"
+              title="Sair"
+            >
+              <LogOut size={18} />
+            </button>
+            
+            {/* Mobile Menu Button */}
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="lg:hidden p-2 text-white hover:bg-white/10 rounded-xl transition-colors"
+            >
+              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden overflow-hidden bg-brand-secondary/95 backdrop-blur-md border-t border-white/10"
+            >
+              <div className="p-4 flex flex-col gap-2">
+                <button
+                  onClick={() => { setActiveTab('dashboard'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <LayoutDashboard size={20} />
+                  <span className="font-bold">Dashboard</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('rig'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'rig' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <Zap size={20} />
+                  <span className="font-bold">Geradores</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('checklists'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'checklists' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <ClipboardCheck size={20} />
+                  <span className="font-bold">Checklists</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('rentals'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'rentals' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <Truck size={20} />
+                  <span className="font-bold">Locações</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('employees'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'employees' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <Users size={20} />
+                  <span className="font-bold">Equipe</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('documentation'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'documentation' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <FileText size={20} />
+                  <span className="font-bold">Documentação</span>
+                </button>
+                
+                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between px-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white font-bold">
+                      {currentUser?.name.split(' ').map(n => n[0]).join('') || 'U'}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">{currentUser?.name}</p>
+                      <p className="text-[10px] text-zinc-400 uppercase tracking-widest">{currentUser?.role}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleLogout}
+                    className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all"
+                  >
+                    <LogOut size={20} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* Main Content */}
@@ -2250,7 +2614,7 @@ export default function App() {
               </p>
             </div>
             
-            {activeTab !== 'dashboard' && (
+            {activeTab !== 'dashboard' && activeTab !== 'documentation' && (
               <div className="hidden sm:block">
                 <button 
                   onClick={() => {
@@ -2267,8 +2631,7 @@ export default function App() {
                   {activeTab === 'rig' ? 'Novo Gerador' : 
                    activeTab === 'checklists' ? 'Novo Modelo' :
                    activeTab === 'rentals' ? (rentalSubTab === 'clients' ? 'Novo Cliente' : 'Nova Locação') :
-                   activeTab === 'employees' ? 'Novo Funcionário' : 
-                   activeTab === 'documentation' ? 'Novo Documento' : 'Ação Rápida'}
+                   activeTab === 'employees' ? 'Novo Funcionário' : 'Ação Rápida'}
                 </button>
               </div>
             )}
@@ -2291,6 +2654,8 @@ export default function App() {
           {renderRentalDetailModal()}
           {renderChecklistForm()}
           {renderDocumentViewModal()}
+          {renderGlobalPDFTemplate()}
+          {renderEmployeeDetailModal()}
         </div>
       </main>
     </div>

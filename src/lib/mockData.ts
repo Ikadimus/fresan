@@ -91,9 +91,10 @@ export const mockChecklistTemplates: ChecklistTemplate[] = [
 ];
 
 export const mockEmployees: Employee[] = [
-  { id: 'emp-1', name: 'João Silva', role: 'Técnico', email: 'joao@gerocontrol.com' },
-  { id: 'emp-2', name: 'Carlos Souza', role: 'Técnico', email: 'carlos@gerocontrol.com' },
-  { id: 'emp-3', name: 'Ricardo Lima', role: 'Admin', email: 'ricardo@gerocontrol.com' }
+  { id: 'emp-1', name: 'João Silva', role: 'Técnico', email: 'joao@gerocontrol.com', password: '123' },
+  { id: 'emp-2', name: 'Carlos Souza', role: 'Técnico', email: 'carlos@gerocontrol.com', password: '123' },
+  { id: 'emp-3', name: 'Ricardo Lima', role: 'Admin', email: 'ricardo@gerocontrol.com', password: '123' },
+  { id: 'emp-4', name: 'Usuário Teste', role: 'Admin', email: 'p@p', password: '123' }
 ];
 
 export const mockRentals: Rental[] = [

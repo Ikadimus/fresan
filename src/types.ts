@@ -99,6 +99,7 @@ export interface Employee {
   name: string;
   role: 'Admin' | 'Técnico' | 'Operador';
   email: string;
+  password?: string;
 }
 
 export interface Rental {
