@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import SignaturePad from 'react-signature-pad-wrapper';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { 
   BarChart, 
@@ -340,8 +340,6 @@ export default function App() {
 
       const imgData = canvas.toDataURL('image/png');
       
-      // Use dynamic import or check if jsPDF is a constructor
-      const { jsPDF } = await import('jspdf');
       const pdf = new jsPDF('p', 'mm', 'a4');
       
       const pdfWidth = pdf.internal.pageSize.getWidth();
