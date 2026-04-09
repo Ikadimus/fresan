@@ -20,11 +20,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     optimizeDeps: {
-      include: ['react-signature-canvas', 'trim-canvas'],
+      include: ['react-signature-pad-wrapper', 'trim-canvas'],
     },
     build: {
       commonjsOptions: {
-        include: [/react-signature-canvas/, /trim-canvas/, /node_modules/],
+        include: [/react-signature-pad-wrapper/, /trim-canvas/, /node_modules/],
       },
     },
     server: {
