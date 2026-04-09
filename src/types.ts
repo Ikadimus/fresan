@@ -1,11 +1,29 @@
 export type GeneratorStatus = 'Disponível' | 'Alugado' | 'Manutenção';
 
+export type MaintenanceType = 'Preventiva' | 'Corretiva';
+export type DocType = 'Checklist' | 'Relatório' | 'Orçamento';
+
+export interface MaintenancePart {
+  id: string;
+  name: string;
+  value: number;
+}
+
+export interface MaintenanceService {
+  id: string;
+  name: string;
+  value: number;
+}
+
 export interface MaintenanceEvent {
   id: string;
   date: string;
   description: string;
   technician: string;
+  type: MaintenanceType;
   cost?: number;
+  parts?: MaintenancePart[];
+  services?: MaintenanceService[];
 }
 
 export interface LocationHistory {
@@ -51,6 +69,31 @@ export interface ChecklistResult {
   answers: Record<string, any>;
 }
 
+export interface SignedDocument {
+  id: string;
+  date: string;
+  generatorId: string;
+  checklistId?: string;
+  maintenanceId?: string;
+  technicianName: string;
+  responsibleName: string;
+  technicianSignature: string; // base64
+  responsibleSignature: string; // base64
+  fullChecklist?: ChecklistResult;
+  maintenanceDetails?: MaintenanceEvent;
+  title: string;
+  docType: DocType;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  cnpj: string;
+  email: string;
+  phone: string;
+  address: string;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -62,7 +105,9 @@ export interface Rental {
   id: string;
   generatorId: string;
   companyName: string;
+  clientId: string;
   startDate: string;
   endDate?: string;
   status: 'Ativo' | 'Finalizado';
+  value?: number;
 }

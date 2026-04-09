@@ -1,4 +1,4 @@
-import { Generator, ChecklistTemplate, Employee, Rental } from '../types';
+import { Generator, ChecklistTemplate, Employee, Rental, Client } from '../types';
 
 export const mockGenerators: Generator[] = [
   {
@@ -10,8 +10,8 @@ export const mockGenerators: Generator[] = [
     powerKva: 150,
     year: 2022,
     maintenanceHistory: [
-      { id: 'm1', date: '2025-12-15', description: 'Troca de óleo e filtros', technician: 'João Silva', cost: 1200 },
-      { id: 'm2', date: '2025-06-10', description: 'Revisão preventiva semestral', technician: 'Carlos Souza', cost: 800 }
+      { id: 'm1', date: '2025-12-15', description: 'Troca de óleo e filtros', technician: 'João Silva', cost: 1200, type: 'Preventiva' },
+      { id: 'm2', date: '2025-06-10', description: 'Revisão preventiva semestral', technician: 'Carlos Souza', cost: 800, type: 'Preventiva' }
     ],
     locationHistory: [
       { id: 'lh1', date: '2026-01-10', location: 'Obra Central - Construtora ABC', company: 'Construtora ABC', type: 'Entrega' },
@@ -40,7 +40,7 @@ export const mockGenerators: Generator[] = [
     powerKva: 500,
     year: 2021,
     maintenanceHistory: [
-      { id: 'm3', date: '2026-03-20', description: 'Reparo no alternador', technician: 'Ricardo Lima' }
+      { id: 'm3', date: '2026-03-20', description: 'Reparo no alternador', technician: 'Ricardo Lima', type: 'Corretiva' }
     ],
     locationHistory: []
   }
@@ -66,6 +66,27 @@ export const mockChecklistTemplates: ChecklistTemplate[] = [
       { id: 'q7', text: 'Vazamentos detectados?', type: 'boolean' },
       { id: 'q8', text: 'Horímetro atual', type: 'number' }
     ]
+  },
+  {
+    id: 'tmpl-3',
+    name: 'Checklist Técnico Completo (Padrão Fresan)',
+    questions: [
+      { id: 'q9', text: 'Nível de Óleo do Motor', type: 'boolean' },
+      { id: 'q10', text: 'Nível do Líquido de Arrefecimento', type: 'boolean' },
+      { id: 'q11', text: 'Estado das Correias', type: 'boolean' },
+      { id: 'q12', text: 'Vazamentos (Óleo, Água, Combustível)', type: 'boolean' },
+      { id: 'q13', text: 'Estado da Bateria e Cabos', type: 'boolean' },
+      { id: 'q14', text: 'Tensão da Bateria (V)', type: 'number' },
+      { id: 'q15', text: 'Nível de Combustível (%)', type: 'number' },
+      { id: 'q16', text: 'Estado do Filtro de Ar', type: 'boolean' },
+      { id: 'q17', text: 'Funcionamento do Carregador de Bateria', type: 'boolean' },
+      { id: 'q18', text: 'Teste de Partida / Funcionamento', type: 'boolean' },
+      { id: 'q19', text: 'Frequência (Hz)', type: 'number' },
+      { id: 'q20', text: 'Tensão de Saída (V)', type: 'number' },
+      { id: 'q21', text: 'Horímetro Atual', type: 'number' },
+      { id: 'q22', text: 'Limpeza e Conservação', type: 'boolean' },
+      { id: 'q23', text: 'Observações Técnicas', type: 'text' }
+    ]
   }
 ];
 
@@ -80,7 +101,28 @@ export const mockRentals: Rental[] = [
     id: 'rent-1',
     generatorId: 'GEN-001',
     companyName: 'Construtora ABC',
+    clientId: 'client-1',
     startDate: '2026-01-10',
-    status: 'Ativo'
+    status: 'Ativo',
+    value: 4500
+  }
+];
+
+export const mockClients: Client[] = [
+  {
+    id: 'client-1',
+    name: 'Construtora ABC',
+    cnpj: '12.345.678/0001-90',
+    email: 'contato@abc.com',
+    phone: '(11) 98888-7777',
+    address: 'Av. Paulista, 1000, São Paulo - SP'
+  },
+  {
+    id: 'client-2',
+    name: 'Eventos Prime',
+    cnpj: '98.765.432/0001-10',
+    email: 'financeiro@prime.com',
+    phone: '(11) 97777-6666',
+    address: 'Rua Augusta, 500, São Paulo - SP'
   }
 ];
