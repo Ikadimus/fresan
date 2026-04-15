@@ -57,7 +57,8 @@ import {
   ChecklistResult,
   MaintenanceEvent,
   DocType,
-  Client
+  Client,
+  HourMeterReading
 } from './types';
 import { 
   mockGenerators, 
@@ -278,6 +279,9 @@ export default function App() {
   const [maintenanceServices, setMaintenanceServices] = useState<MaintenanceService[]>([]);
   const [maintenanceDescription, setMaintenanceDescription] = useState('');
   
+  const [showHourMeterForm, setShowHourMeterForm] = useState(false);
+  const [hourMeterValue, setHourMeterValue] = useState<string>('');
+
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureData, setSignatureData] = useState<{
     technicianName: string;
@@ -1961,6 +1965,155 @@ export default function App() {
     </div>
   );
 
+  const handleSaveHourMeter = () => {
+    if (!selectedGenerator || !hourMeterValue) return;
+
+    const newValue = parseFloat(hourMeterValue);
+    if (isNaN(newValue)) return;
+
+    const newReading: HourMeterReading = {
+      id: `HM-${Date.now()}`,
+      date: new Date().toISOString(),
+      value: newValue,
+      technician: currentUser?.name || 'Técnico'
+    };
+
+    const updatedGenerators = generators.map(g => {
+      if (g.id === selectedGenerator.id) {
+        return {
+          ...g,
+          hourMeterHistory: [newReading, ...(g.hourMeterHistory || [])]
+        };
+      }
+      return g;
+    });
+
+    setGenerators(updatedGenerators);
+    setSelectedGenerator({
+      ...selectedGenerator,
+      hourMeterHistory: [newReading, ...(selectedGenerator.hourMeterHistory || [])]
+    });
+    setShowHourMeterForm(false);
+    setHourMeterValue('');
+  };
+
+  const analyzeHourMeter = (generator: Generator) => {
+    if (!generator.hourMeterHistory || generator.hourMeterHistory.length === 0) {
+      return "Nenhum dado de horímetro disponível para análise.";
+    }
+
+    const history = [...generator.hourMeterHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const latest = history[0];
+    
+    if (history.length < 2) {
+      return `Última leitura: ${latest.value}h em ${format(new Date(latest.date), 'dd/MM/yyyy')}. Adicione mais leituras para análise de consumo.`;
+    }
+
+    const previous = history[1];
+    const hoursDiff = latest.value - previous.value;
+    const daysDiff = Math.max(1, (new Date(latest.date).getTime() - new Date(previous.date).getTime()) / (1000 * 60 * 60 * 24));
+    
+    const avgUsagePerDay = hoursDiff / daysDiff;
+    
+    let analysis = `Uso médio de ${avgUsagePerDay.toFixed(1)}h/dia nas últimas medições. `;
+    
+    if (avgUsagePerDay > 12) {
+      analysis += "Uso intensivo detectado. Recomenda-se antecipar revisões preventivas.";
+    } else if (avgUsagePerDay < 2) {
+      analysis += "Baixo uso detectado. Verifique se o equipamento está sendo utilizado conforme planejado.";
+    } else {
+      analysis += "Funcionamento dentro dos parâmetros normais de operação.";
+    }
+
+    return analysis;
+  };
+
+  const renderHourMeterForm = () => (
+    <AnimatePresence>
+      {showHourMeterForm && selectedGenerator && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowHourMeterForm(false)}
+            className="absolute inset-0 bg-brand-secondary/80 backdrop-blur-sm" 
+          />
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+          >
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-zinc-900">Registrar Horímetro</h2>
+              <button onClick={() => setShowHourMeterForm(false)} className="p-2 hover:bg-zinc-100 rounded-full">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="p-4 bg-brand-primary/5 rounded-2xl border border-brand-primary/10">
+                <p className="text-xs font-bold text-brand-secondary uppercase tracking-wider mb-1">Última Leitura</p>
+                <p className="text-2xl font-black text-brand-primary">
+                  {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 
+                    ? `${selectedGenerator.hourMeterHistory[0].value}h` 
+                    : 'Sem registros'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Nova Leitura (Horas)</label>
+                <div className="relative">
+                  <History className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                  <input 
+                    type="number" 
+                    value={hourMeterValue}
+                    onChange={(e) => setHourMeterValue(e.target.value)}
+                    placeholder="Ex: 1250.5"
+                    className="w-full pl-12 pr-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-brand-primary transition-colors font-bold text-lg"
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-400">Insira o valor exato exibido no painel do gerador.</p>
+              </div>
+
+              {hourMeterValue && !isNaN(parseFloat(hourMeterValue)) && (
+                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 animate-in fade-in slide-in-from-top-2">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2">Prévia da Análise</p>
+                  <p className="text-xs text-zinc-600 leading-relaxed italic">
+                    {analyzeHourMeter({
+                      ...selectedGenerator,
+                      hourMeterHistory: [
+                        { id: 'temp', date: new Date().toISOString(), value: parseFloat(hourMeterValue), technician: currentUser?.name || 'Técnico' },
+                        ...(selectedGenerator.hourMeterHistory || [])
+                      ]
+                    })}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-zinc-50 border-t border-zinc-100 flex gap-3">
+              <button 
+                onClick={() => setShowHourMeterForm(false)}
+                className="flex-1 py-3 border border-zinc-200 text-zinc-600 rounded-xl font-bold text-sm hover:bg-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveHourMeter}
+                disabled={!hourMeterValue || isNaN(parseFloat(hourMeterValue))}
+                className="flex-1 py-3 bg-brand-primary text-brand-secondary rounded-xl font-black text-sm hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100"
+              >
+                Salvar Leitura
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
   const renderRIG = () => (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-zinc-100 shadow-sm">
@@ -2085,19 +2238,26 @@ export default function App() {
                       <div className="grid grid-cols-1 gap-2">
                         <button 
                           onClick={() => setShowChecklistSelector(true)}
-                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary text-brand-secondary rounded-xl text-sm font-bold transition-colors shadow-sm"
+                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
                         >
                           <ClipboardCheck size={16} />
                           Novo Checklist
                         </button>
                         <button 
                           onClick={() => setShowMaintenanceForm(true)}
-                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 rounded-xl text-sm font-medium transition-colors"
+                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary/60 text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
                         >
                           <Wrench size={16} />
                           Registrar Manutenção
                         </button>
-                        <button className="flex items-center gap-2 w-full px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 rounded-xl text-sm font-medium transition-colors">
+                        <button 
+                          onClick={() => setShowHourMeterForm(true)}
+                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary/30 text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          <History size={16} />
+                          Registrar Horímetro
+                        </button>
+                        <button className="flex items-center gap-2 w-full px-4 py-2.5 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-sm font-bold transition-all shadow-sm hover:bg-zinc-50 hover:scale-[1.02] active:scale-[0.98]">
                           <ArrowRightLeft size={16} />
                           Movimentar
                         </button>
@@ -2106,28 +2266,67 @@ export default function App() {
                   </div>
 
                   <div className="md:col-span-2 space-y-8">
-                    <div>
-                      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                        <History size={14} />
-                        Histórico de Movimentação
-                      </h4>
-                      <div className="relative space-y-4 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-zinc-100">
-                        {selectedGenerator.locationHistory.length > 0 ? selectedGenerator.locationHistory.map((lh, idx) => (
-                          <div key={lh.id} className="relative flex items-start gap-6">
-                            <div className={`mt-1 w-10 h-10 rounded-full flex items-center justify-center z-10 ${idx === 0 ? 'bg-brand-primary text-brand-secondary' : 'bg-white border-2 border-zinc-100 text-zinc-400'}`}>
-                              <MapPin size={16} />
-                            </div>
-                            <div className="flex-1 pb-4">
-                              <div className="flex items-center justify-between">
-                                <h5 className="font-bold text-zinc-900 text-sm">{lh.location}</h5>
-                                <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(lh.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      <div>
+                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <History size={14} />
+                          Histórico de Movimentação
+                        </h4>
+                        <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
+                          <div className="relative space-y-4 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-zinc-100">
+                            {selectedGenerator.locationHistory.length > 0 ? selectedGenerator.locationHistory.map((lh, idx) => (
+                              <div key={lh.id} className="relative flex items-start gap-6">
+                                <div className={`mt-1 w-10 h-10 rounded-full flex items-center justify-center z-10 ${idx === 0 ? 'bg-brand-primary text-brand-secondary' : 'bg-white border-2 border-zinc-100 text-zinc-400'}`}>
+                                  <MapPin size={16} />
+                                </div>
+                                <div className="flex-1 pb-4">
+                                  <div className="flex items-center justify-between">
+                                    <h5 className="font-bold text-zinc-900 text-sm">{lh.location}</h5>
+                                    <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(lh.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                                  </div>
+                                  <p className="text-xs text-zinc-500 mt-1">{lh.type} {lh.company ? `para ${lh.company}` : ''}</p>
+                                </div>
                               </div>
-                              <p className="text-xs text-zinc-500 mt-1">{lh.type} {lh.company ? `para ${lh.company}` : ''}</p>
-                            </div>
+                            )) : (
+                              <p className="text-sm text-zinc-400 italic pl-12">Nenhum histórico registrado.</p>
+                            )}
                           </div>
-                        )) : (
-                          <p className="text-sm text-zinc-400 italic pl-12">Nenhum histórico registrado.</p>
-                        )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <History size={14} />
+                          Histórico de Horímetro e Análise
+                        </h4>
+                        
+                        <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
+                          {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 && (
+                            <div className="mb-6 p-4 bg-brand-primary/5 rounded-2xl border border-brand-primary/10">
+                              <p className="text-[10px] font-bold text-brand-secondary uppercase mb-1">Análise de Funcionamento</p>
+                              <p className="text-sm text-zinc-700 font-medium leading-relaxed">
+                                {analyzeHourMeter(selectedGenerator)}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="space-y-3">
+                            {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 ? selectedGenerator.hourMeterHistory.map((hm) => (
+                              <div key={hm.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex justify-between items-center">
+                                <div>
+                                  <p className="text-lg font-black text-zinc-900">{hm.value}h</p>
+                                  <p className="text-[10px] text-zinc-500 mt-0.5">Técnico: {hm.technician}</p>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[10px] text-zinc-400 font-medium block">{format(new Date(hm.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                                  <span className="text-[10px] text-zinc-400 font-medium block">{format(new Date(hm.date), "HH:mm")}</span>
+                                </div>
+                              </div>
+                            )) : (
+                              <p className="text-sm text-zinc-400 italic">Nenhuma leitura de horímetro registrada.</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -2136,25 +2335,27 @@ export default function App() {
                         <Wrench size={14} />
                         Histórico de Manutenção
                       </h4>
-                      <div className="space-y-3">
-                        {selectedGenerator.maintenanceHistory.length > 0 ? selectedGenerator.maintenanceHistory.map((m) => (
-                          <div key={m.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h5 className="font-bold text-zinc-900 text-sm">{m.description}</h5>
-                                <p className="text-xs text-zinc-500 mt-1">Técnico: {m.technician}</p>
+                      <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
+                        <div className="space-y-3">
+                          {selectedGenerator.maintenanceHistory.length > 0 ? selectedGenerator.maintenanceHistory.map((m) => (
+                            <div key={m.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h5 className="font-bold text-zinc-900 text-sm">{m.description}</h5>
+                                  <p className="text-xs text-zinc-500 mt-1">Técnico: {m.technician}</p>
+                                </div>
+                                <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(m.date), "dd MMM yyyy", { locale: ptBR })}</span>
                               </div>
-                              <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(m.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                              {m.cost && (
+                                <div className="mt-2 text-xs font-bold text-brand-primary">
+                                  R$ {m.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </div>
+                              )}
                             </div>
-                            {m.cost && (
-                              <div className="mt-2 text-xs font-bold text-brand-primary">
-                                R$ {m.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </div>
-                            )}
-                          </div>
-                        )) : (
-                          <p className="text-sm text-zinc-400 italic">Nenhuma manutenção registrada.</p>
-                        )}
+                          )) : (
+                            <p className="text-sm text-zinc-400 italic">Nenhuma manutenção registrada.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2656,6 +2857,7 @@ export default function App() {
           {renderDocumentViewModal()}
           {renderGlobalPDFTemplate()}
           {renderEmployeeDetailModal()}
+          {renderHourMeterForm()}
         </div>
       </main>
     </div>

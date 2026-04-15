@@ -16,6 +16,10 @@ export const mockGenerators: Generator[] = [
     locationHistory: [
       { id: 'lh1', date: '2026-01-10', location: 'Obra Central - Construtora ABC', company: 'Construtora ABC', type: 'Entrega' },
       { id: 'lh2', date: '2025-12-10', location: 'Pátio Central', type: 'Retirada' }
+    ],
+    hourMeterHistory: [
+      { id: 'hm1', date: '2026-04-01T10:00:00Z', value: 1200, technician: 'Ricardo Lima' },
+      { id: 'hm2', date: '2026-04-10T15:30:00Z', value: 1245, technician: 'João Silva' }
     ]
   },
   {
@@ -29,6 +33,9 @@ export const mockGenerators: Generator[] = [
     maintenanceHistory: [],
     locationHistory: [
       { id: 'lh3', date: '2026-02-01', location: 'Pátio Central', type: 'Movimentação' }
+    ],
+    hourMeterHistory: [
+      { id: 'hm3', date: '2026-03-15T08:00:00Z', value: 850, technician: 'Carlos Souza' }
     ]
   },
   {
@@ -42,7 +49,10 @@ export const mockGenerators: Generator[] = [
     maintenanceHistory: [
       { id: 'm3', date: '2026-03-20', description: 'Reparo no alternador', technician: 'Ricardo Lima', type: 'Corretiva' }
     ],
-    locationHistory: []
+    locationHistory: [],
+    hourMeterHistory: [
+      { id: 'hm4', date: '2026-03-20T14:00:00Z', value: 2100, technician: 'Ricardo Lima' }
+    ]
   }
 ];
 

@@ -34,6 +34,13 @@ export interface LocationHistory {
   type: 'Entrega' | 'Retirada' | 'Movimentação';
 }
 
+export interface HourMeterReading {
+  id: string;
+  date: string;
+  value: number;
+  technician: string;
+}
+
 export interface Generator {
   id: string;
   model: string;
@@ -44,6 +51,7 @@ export interface Generator {
   year: number;
   maintenanceHistory: MaintenanceEvent[];
   locationHistory: LocationHistory[];
+  hourMeterHistory: HourMeterReading[];
 }
 
 export type QuestionType = 'boolean' | 'text' | 'number';
