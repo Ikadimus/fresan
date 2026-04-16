@@ -176,6 +176,7 @@ export default function App() {
       generatorId: 'GEN-001',
       technicianName: 'Ricardo Lima',
       responsibleName: 'Marcos Silva',
+      companyName: 'Construtora ABC',
       technicianSignature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
       responsibleSignature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
       title: 'Manutenção Corretiva e Checklist - Cummins C150',
@@ -215,6 +216,7 @@ export default function App() {
       generatorId: 'GEN-001',
       technicianName: 'Ricardo Lima',
       responsibleName: 'Marcos Silva',
+      companyName: 'Construtora ABC',
       technicianSignature: '',
       responsibleSignature: '',
       title: 'Checklist de Entrega - Cummins C150',
@@ -226,6 +228,7 @@ export default function App() {
       generatorId: 'GEN-003',
       technicianName: 'João Silva',
       responsibleName: 'Ana Oliveira',
+      companyName: 'Shopping Center Norte',
       technicianSignature: '',
       responsibleSignature: '',
       title: 'Relatório Técnico: Preventiva Mensal',
@@ -237,6 +240,7 @@ export default function App() {
       generatorId: 'GEN-002',
       technicianName: 'Carlos Souza',
       responsibleName: 'Pedro Santos',
+      companyName: 'Fazenda Santa Maria',
       technicianSignature: '',
       responsibleSignature: '',
       title: 'Orçamento: Troca de Bateria',
@@ -260,6 +264,7 @@ export default function App() {
   const [showEditTemplateForm, setShowEditTemplateForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ChecklistTemplate | null>(null);
   const [showNewRentalForm, setShowNewRentalForm] = useState(false);
+  const [isRentalIndefinite, setIsRentalIndefinite] = useState(false);
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [showRentalDetailModal, setShowRentalDetailModal] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<SignedDocument | null>(null);
@@ -286,6 +291,7 @@ export default function App() {
   const [signatureData, setSignatureData] = useState<{
     technicianName: string;
     responsibleName: string;
+    companyName?: string;
     checklistResult?: ChecklistResult;
     maintenanceDetails?: MaintenanceEvent;
     title: string;
@@ -320,6 +326,7 @@ export default function App() {
       generatorId: selectedGenerator.id,
       technicianName: signatureData.technicianName,
       responsibleName: signatureData.responsibleName,
+      companyName: signatureData.companyName,
       technicianSignature: techSig,
       responsibleSignature: respSig,
       checklistId: signatureData.checklistResult?.id,
@@ -826,6 +833,10 @@ export default function App() {
                       <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Responsável</span>
                       <span className="text-xs text-zinc-700">{doc.responsibleName}</span>
                     </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Empresa</span>
+                      <span className="text-xs text-zinc-700">{doc.companyName || '-'}</span>
+                    </div>
                   </div>
                 </div>
               )) : (
@@ -1201,7 +1212,7 @@ export default function App() {
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="absolute inset-0 bg-brand-secondary/90 backdrop-blur-md"
-            onClick={() => setShowNewRentalForm(false)}
+            onClick={() => { setShowNewRentalForm(false); setIsRentalIndefinite(false); }}
           />
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
@@ -1209,7 +1220,7 @@ export default function App() {
           >
             <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
               <h3 className="text-xl font-bold text-zinc-900">Nova Locação</h3>
-              <button onClick={() => setShowNewRentalForm(false)} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors">
+              <button onClick={() => { setShowNewRentalForm(false); setIsRentalIndefinite(false); }} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -1234,12 +1245,36 @@ export default function App() {
                   <input type="date" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-400 uppercase">Valor Mensal</label>
-                  <input type="number" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="R$ 0,00" />
+                  <label className="text-xs font-bold text-zinc-400 uppercase">Responsável</label>
+                  <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Nome do responsável" />
                 </div>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-400 uppercase">Valor Mensal</label>
+                <input type="number" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="R$ 0,00" />
+              </div>
+
+              <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-400 uppercase">Previsão de Término</label>
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={isRentalIndefinite}
+                      onChange={(e) => setIsRentalIndefinite(e.target.checked)}
+                      className="w-4 h-4 rounded border-zinc-300 text-brand-primary focus:ring-brand-primary cursor-pointer" 
+                    />
+                    <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-700 transition-colors">Tempo Indeterminado</span>
+                  </label>
+                </div>
+                <input 
+                  type="date" 
+                  disabled={isRentalIndefinite}
+                  className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none disabled:opacity-50 disabled:bg-zinc-100 disabled:cursor-not-allowed" 
+                />
+              </div>
               <button 
-                onClick={() => setShowNewRentalForm(false)}
+                onClick={() => { setShowNewRentalForm(false); setIsRentalIndefinite(false); }}
                 className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4"
               >
                 Confirmar Locação
@@ -1410,6 +1445,7 @@ export default function App() {
                   {signatureData.title}
                 </h3>
                 <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 text-sm text-zinc-600">
+                  <p><strong>Empresa:</strong> {signatureData.companyName || '-'}</p>
                   <p><strong>Gerador:</strong> {selectedGenerator?.model} ({selectedGenerator?.id})</p>
                   <p><strong>Data:</strong> {format(new Date(), "dd/MM/yyyy")}</p>
                 </div>
@@ -1667,9 +1703,12 @@ export default function App() {
                     maintenanceHistory: [newMaintenance, ...selectedGenerator.maintenanceHistory]
                   });
                   
+                  const activeRental = rentals.find(r => r.generatorId === selectedGenerator.id && r.status === 'Ativo');
+                  
                   setSignatureData({
                     technicianName: 'Ricardo Lima',
                     responsibleName: '',
+                    companyName: activeRental?.companyName || 'Pátio Central',
                     maintenanceDetails: newMaintenance,
                     title: `Manutenção ${maintenanceType} - ${selectedGenerator.model}`
                   });
@@ -1775,9 +1814,12 @@ export default function App() {
                     answers: checklistAnswers
                   };
                   
+                  const activeRental = rentals.find(r => r.generatorId === selectedGenerator.id && r.status === 'Ativo');
+
                   setSignatureData({
                     technicianName: 'Ricardo Lima',
                     responsibleName: '',
+                    companyName: activeRental?.companyName || 'Pátio Central',
                     checklistResult: mockResult,
                     title: currentChecklistTemplate.name
                   });
@@ -2128,23 +2170,62 @@ export default function App() {
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {generators.map((gen) => (
-          <Card key={gen.id} className="hover:border-brand-primary/30 transition-all cursor-pointer group" onClick={() => setSelectedGenerator(gen)}>
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-600 group-hover:bg-brand-secondary group-hover:text-white transition-colors">
-                  <Zap size={24} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-zinc-900">{gen.model}</h3>
-                    <Badge status={gen.status} />
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-0.5">Série: {gen.serialNumber} • ID: {gen.id}</p>
-                </div>
+        {generators.map((gen) => {
+          const activeRental = rentals.find(r => r.generatorId === gen.id && r.status === 'Ativo');
+          
+          let statusInfo = null;
+          if (gen.status === 'Alugado' && activeRental) {
+            statusInfo = (
+              <div className="mt-1 text-[10px] text-brand-primary font-medium flex flex-wrap gap-x-2">
+                <span>Cliente: {activeRental.companyName}</span>
+                <span>Resp: {activeRental.responsibleName || '-'}</span>
+                <span>Desde: {format(new Date(activeRental.startDate), "dd/MM/yyyy", { locale: ptBR })}</span>
+                <span className="font-bold flex items-center gap-1">
+                  Término: {activeRental.isIndefinite ? 
+                    <span className="bg-brand-primary/10 px-1 rounded text-[9px]">INDETERMINADO</span> : 
+                    (activeRental.endDate ? format(new Date(activeRental.endDate), "dd/MM/yyyy", { locale: ptBR }) : '-')
+                  }
+                </span>
               </div>
-              
-              <div className="flex flex-col md:items-end gap-1">
+            );
+          } else if (gen.status === 'Disponível') {
+            const lastMovement = [...gen.locationHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+            if (lastMovement) {
+              statusInfo = (
+                <div className="mt-1 text-[10px] text-emerald-600 font-medium">
+                  Disponível desde: {format(new Date(lastMovement.date), "dd/MM/yyyy", { locale: ptBR })}
+                </div>
+              );
+            }
+          } else if (gen.status === 'Manutenção') {
+            const lastMaint = [...gen.maintenanceHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+            if (lastMaint) {
+              statusInfo = (
+                <div className="mt-1 text-[10px] text-amber-600 font-medium">
+                  Em manutenção desde: {format(new Date(lastMaint.date), "dd/MM/yyyy", { locale: ptBR })}
+                </div>
+              );
+            }
+          }
+
+          return (
+            <Card key={gen.id} className="hover:border-brand-primary/30 transition-all cursor-pointer group" onClick={() => setSelectedGenerator(gen)}>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-600 group-hover:bg-brand-secondary group-hover:text-white transition-colors">
+                    <Zap size={24} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-zinc-900">{gen.model}</h3>
+                      <Badge status={gen.status} />
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-0.5">Série: {gen.serialNumber} • ID: {gen.id}</p>
+                    {statusInfo}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col md:items-end gap-1">
                 <div className="flex items-center gap-1.5 text-sm text-zinc-600">
                   <MapPin size={14} />
                   <span>{gen.currentLocation}</span>
@@ -2166,7 +2247,7 @@ export default function App() {
               </div>
             </div>
           </Card>
-        ))}
+        )})}
       </div>
 
       {/* Generator Detail Modal */}

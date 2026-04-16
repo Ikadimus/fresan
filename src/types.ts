@@ -87,6 +87,7 @@ export interface SignedDocument {
   responsibleName: string;
   technicianSignature: string; // base64
   responsibleSignature: string; // base64
+  companyName?: string;
   fullChecklist?: ChecklistResult;
   maintenanceDetails?: MaintenanceEvent;
   title: string;
@@ -116,7 +117,9 @@ export interface Rental {
   companyName: string;
   clientId: string;
   startDate: string;
+  responsibleName?: string;
   endDate?: string;
+  isIndefinite?: boolean;
   status: 'Ativo' | 'Finalizado';
   value?: number;
 }

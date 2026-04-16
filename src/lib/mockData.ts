@@ -114,6 +114,8 @@ export const mockRentals: Rental[] = [
     companyName: 'Construtora ABC',
     clientId: 'client-1',
     startDate: '2026-01-10',
+    responsibleName: 'Marcos Silva',
+    isIndefinite: true,
     status: 'Ativo',
     value: 4500
   }
