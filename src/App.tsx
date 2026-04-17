@@ -41,7 +41,7 @@ import {
   Pie, 
   Cell 
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import { 
@@ -286,6 +286,7 @@ export default function App() {
   
   const [showHourMeterForm, setShowHourMeterForm] = useState(false);
   const [hourMeterValue, setHourMeterValue] = useState<string>('');
+  const [contractFilterDays, setContractFilterDays] = useState(30);
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureData, setSignatureData] = useState<{
@@ -1948,24 +1949,79 @@ export default function App() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <Card className="lg:col-span-2">
-          <h4 className="text-lg font-bold text-zinc-900 mb-6">Status da Frota</h4>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pieData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 12 }} />
-                <Tooltip 
-                  cursor={{ fill: '#f8f8f8' }}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="mb-6">
+            <h4 className="text-lg font-bold text-zinc-900">Vencimento de Contratos</h4>
+            <p className="text-xs text-zinc-500 mt-1">Locações ativas próximas do fim</p>
+            
+            <div className="mt-6 p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Ver contratos vencendo em até:</span>
+                <span className="text-sm font-black text-brand-primary">{contractFilterDays} dias</span>
+              </div>
+              <input 
+                type="range" 
+                min="5" 
+                max="90" 
+                step="5"
+                value={contractFilterDays}
+                onChange={(e) => setContractFilterDays(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+              />
+              <div className="flex justify-between mt-1 px-1">
+                <span className="text-[9px] font-bold text-zinc-400">5 d</span>
+                <span className="text-[9px] font-bold text-zinc-400">90 d</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 overflow-y-auto max-h-[350px] pr-2 custom-scrollbar">
+            {rentals
+              .filter(r => r.status === 'Ativo' && !r.isIndefinite && r.endDate)
+              .map(r => {
+                const daysLeft = differenceInDays(new Date(r.endDate!), new Date());
+                const gen = generators.find(g => g.id === r.generatorId);
+                return { ...r, daysLeft, gen };
+              })
+              .filter(r => r.daysLeft >= 0 && r.daysLeft <= contractFilterDays)
+              .sort((a, b) => a.daysLeft - b.daysLeft)
+              .map(item => (
+                <div 
+                  key={item.id} 
+                  className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between hover:bg-white hover:shadow-md transition-all group cursor-pointer"
+                  onClick={() => item.gen && setSelectedGenerator(item.gen)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-xl ${
+                      item.daysLeft <= 7 ? 'bg-red-50 text-red-600' : 'bg-brand-primary/10 text-brand-primary'
+                    }`}>
+                      <Truck size={20} />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-zinc-900 text-sm">{item.companyName}</h5>
+                      <p className="text-xs text-zinc-500">{item.gen?.model} ({item.gen?.id})</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-black ${
+                      item.daysLeft <= 7 ? 'text-red-600' : 'text-zinc-900'
+                    }`}>
+                      {item.daysLeft === 0 ? 'Vence hoje' : `Faltam ${item.daysLeft} dias`}
+                    </div>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">
+                      Término: {format(new Date(item.endDate!), "dd/MM/yyyy")}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            
+            {rentals.filter(r => r.status === 'Ativo' && !r.isIndefinite && r.endDate && differenceInDays(new Date(r.endDate!), new Date()) <= contractFilterDays).length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
+                <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
+                  <ClipboardCheck size={32} />
+                </div>
+                <p className="text-sm font-medium">Nenhum contrato vencendo neste período.</p>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -2249,204 +2305,205 @@ export default function App() {
           </Card>
         )})}
       </div>
+    </div>
+  );
 
-      {/* Generator Detail Modal */}
-      <AnimatePresence>
-        {selectedGenerator && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedGenerator(null)}
-              className="absolute inset-0 bg-brand-secondary/80 backdrop-blur-sm" 
-            />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-brand-secondary text-white rounded-xl flex items-center justify-center">
-                    <Zap size={20} />
-                  </div>
+  const renderGeneratorDetailModal = () => (
+    <AnimatePresence>
+      {selectedGenerator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedGenerator(null)}
+            className="absolute inset-0 bg-brand-secondary/80 backdrop-blur-sm" 
+          />
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+          >
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-brand-secondary text-white rounded-xl flex items-center justify-center">
+                  <Zap size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-zinc-900">{selectedGenerator.model}</h2>
+                  <p className="text-sm text-zinc-500">RIG: {selectedGenerator.id}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedGenerator(null)}
+                className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="md:col-span-1 space-y-6">
                   <div>
-                    <h2 className="text-xl font-bold text-zinc-900">{selectedGenerator.model}</h2>
-                    <p className="text-sm text-zinc-500">RIG: {selectedGenerator.id}</p>
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">Informações Gerais</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Status</span>
+                        <Badge status={selectedGenerator.status} />
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Série</span>
+                        <span className="font-medium text-zinc-900">{selectedGenerator.serialNumber}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Potência</span>
+                        <span className="font-medium text-zinc-900">{selectedGenerator.powerKva} kVA</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Ano</span>
+                        <span className="font-medium text-zinc-900">{selectedGenerator.year}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Localização</span>
+                        <span className="font-medium text-zinc-900 text-right">{selectedGenerator.currentLocation}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-zinc-100">
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">Ações Rápidas</h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button 
+                        onClick={() => setShowChecklistSelector(true)}
+                        className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <ClipboardCheck size={16} />
+                        Novo Checklist
+                      </button>
+                      <button 
+                        onClick={() => setShowMaintenanceForm(true)}
+                        className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary/60 text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <Wrench size={16} />
+                        Registrar Manutenção
+                      </button>
+                      <button 
+                        onClick={() => setShowHourMeterForm(true)}
+                        className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary/30 text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <History size={16} />
+                        Registrar Horímetro
+                      </button>
+                      <button className="flex items-center gap-2 w-full px-4 py-2.5 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-sm font-bold transition-all shadow-sm hover:bg-zinc-50 hover:scale-[1.02] active:scale-[0.98]">
+                        <ArrowRightLeft size={16} />
+                        Movimentar
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setSelectedGenerator(null)}
-                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
 
-              <div className="flex-1 overflow-y-auto p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="md:col-span-1 space-y-6">
+                <div className="md:col-span-2 space-y-8">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div>
-                      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">Informações Gerais</h4>
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-500">Status</span>
-                          <Badge status={selectedGenerator.status} />
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-500">Série</span>
-                          <span className="font-medium text-zinc-900">{selectedGenerator.serialNumber}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-500">Potência</span>
-                          <span className="font-medium text-zinc-900">{selectedGenerator.powerKva} kVA</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-500">Ano</span>
-                          <span className="font-medium text-zinc-900">{selectedGenerator.year}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-zinc-500">Localização</span>
-                          <span className="font-medium text-zinc-900 text-right">{selectedGenerator.currentLocation}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-6 border-t border-zinc-100">
-                      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">Ações Rápidas</h4>
-                      <div className="grid grid-cols-1 gap-2">
-                        <button 
-                          onClick={() => setShowChecklistSelector(true)}
-                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-                        >
-                          <ClipboardCheck size={16} />
-                          Novo Checklist
-                        </button>
-                        <button 
-                          onClick={() => setShowMaintenanceForm(true)}
-                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary/60 text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-                        >
-                          <Wrench size={16} />
-                          Registrar Manutenção
-                        </button>
-                        <button 
-                          onClick={() => setShowHourMeterForm(true)}
-                          className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand-primary/30 text-brand-secondary rounded-xl text-sm font-bold transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
-                        >
-                          <History size={16} />
-                          Registrar Horímetro
-                        </button>
-                        <button className="flex items-center gap-2 w-full px-4 py-2.5 bg-white border border-zinc-200 text-zinc-600 rounded-xl text-sm font-bold transition-all shadow-sm hover:bg-zinc-50 hover:scale-[1.02] active:scale-[0.98]">
-                          <ArrowRightLeft size={16} />
-                          Movimentar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2 space-y-8">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      <div>
-                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                          <History size={14} />
-                          Histórico de Movimentação
-                        </h4>
-                        <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
-                          <div className="relative space-y-4 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-zinc-100">
-                            {selectedGenerator.locationHistory.length > 0 ? selectedGenerator.locationHistory.map((lh, idx) => (
-                              <div key={lh.id} className="relative flex items-start gap-6">
-                                <div className={`mt-1 w-10 h-10 rounded-full flex items-center justify-center z-10 ${idx === 0 ? 'bg-brand-primary text-brand-secondary' : 'bg-white border-2 border-zinc-100 text-zinc-400'}`}>
-                                  <MapPin size={16} />
-                                </div>
-                                <div className="flex-1 pb-4">
-                                  <div className="flex items-center justify-between">
-                                    <h5 className="font-bold text-zinc-900 text-sm">{lh.location}</h5>
-                                    <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(lh.date), "dd MMM yyyy", { locale: ptBR })}</span>
-                                  </div>
-                                  <p className="text-xs text-zinc-500 mt-1">{lh.type} {lh.company ? `para ${lh.company}` : ''}</p>
-                                </div>
+                      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <History size={14} />
+                        Histórico de Movimentação
+                      </h4>
+                      <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
+                        <div className="relative space-y-4 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-zinc-100">
+                          {selectedGenerator.locationHistory.length > 0 ? selectedGenerator.locationHistory.map((lh, idx) => (
+                            <div key={lh.id} className="relative flex items-start gap-6">
+                              <div className={`mt-1 w-10 h-10 rounded-full flex items-center justify-center z-10 ${idx === 0 ? 'bg-brand-primary text-brand-secondary' : 'bg-white border-2 border-zinc-100 text-zinc-400'}`}>
+                                <MapPin size={16} />
                               </div>
-                            )) : (
-                              <p className="text-sm text-zinc-400 italic pl-12">Nenhum histórico registrado.</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                          <History size={14} />
-                          Histórico de Horímetro e Análise
-                        </h4>
-                        
-                        <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
-                          {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 && (
-                            <div className="mb-6 p-4 bg-brand-primary/5 rounded-2xl border border-brand-primary/10">
-                              <p className="text-[10px] font-bold text-brand-secondary uppercase mb-1">Análise de Funcionamento</p>
-                              <p className="text-sm text-zinc-700 font-medium leading-relaxed">
-                                {analyzeHourMeter(selectedGenerator)}
-                              </p>
+                              <div className="flex-1 pb-4">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="font-bold text-zinc-900 text-sm">{lh.location}</h5>
+                                  <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(lh.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                                </div>
+                                <p className="text-xs text-zinc-500 mt-1">{lh.type} {lh.company ? `para ${lh.company}` : ''}</p>
+                              </div>
                             </div>
+                          )) : (
+                            <p className="text-sm text-zinc-400 italic pl-12">Nenhum histórico registrado.</p>
                           )}
-
-                          <div className="space-y-3">
-                            {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 ? selectedGenerator.hourMeterHistory.map((hm) => (
-                              <div key={hm.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex justify-between items-center">
-                                <div>
-                                  <p className="text-lg font-black text-zinc-900">{hm.value}h</p>
-                                  <p className="text-[10px] text-zinc-500 mt-0.5">Técnico: {hm.technician}</p>
-                                </div>
-                                <div className="text-right">
-                                  <span className="text-[10px] text-zinc-400 font-medium block">{format(new Date(hm.date), "dd MMM yyyy", { locale: ptBR })}</span>
-                                  <span className="text-[10px] text-zinc-400 font-medium block">{format(new Date(hm.date), "HH:mm")}</span>
-                                </div>
-                              </div>
-                            )) : (
-                              <p className="text-sm text-zinc-400 italic">Nenhuma leitura de horímetro registrada.</p>
-                            )}
-                          </div>
                         </div>
                       </div>
                     </div>
 
                     <div>
                       <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                        <Wrench size={14} />
-                        Histórico de Manutenção
+                        <History size={14} />
+                        Histórico de Horímetro e Análise
                       </h4>
+                      
                       <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
+                        {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 && (
+                          <div className="mb-6 p-4 bg-brand-primary/5 rounded-2xl border border-brand-primary/10">
+                            <p className="text-[10px] font-bold text-brand-secondary uppercase mb-1">Análise de Funcionamento</p>
+                            <p className="text-sm text-zinc-700 font-medium leading-relaxed">
+                              {analyzeHourMeter(selectedGenerator)}
+                            </p>
+                          </div>
+                        )}
+
                         <div className="space-y-3">
-                          {selectedGenerator.maintenanceHistory.length > 0 ? selectedGenerator.maintenanceHistory.map((m) => (
-                            <div key={m.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h5 className="font-bold text-zinc-900 text-sm">{m.description}</h5>
-                                  <p className="text-xs text-zinc-500 mt-1">Técnico: {m.technician}</p>
-                                </div>
-                                <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(m.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                          {selectedGenerator.hourMeterHistory && selectedGenerator.hourMeterHistory.length > 0 ? selectedGenerator.hourMeterHistory.map((hm) => (
+                            <div key={hm.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex justify-between items-center">
+                              <div>
+                                <p className="text-lg font-black text-zinc-900">{hm.value}h</p>
+                                <p className="text-[10px] text-zinc-500 mt-0.5">Técnico: {hm.technician}</p>
                               </div>
-                              {m.cost && (
-                                <div className="mt-2 text-xs font-bold text-brand-primary">
-                                  R$ {m.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                </div>
-                              )}
+                              <div className="text-right">
+                                <span className="text-[10px] text-zinc-400 font-medium block">{format(new Date(hm.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                                <span className="text-[10px] text-zinc-400 font-medium block">{format(new Date(hm.date), "HH:mm")}</span>
+                              </div>
                             </div>
                           )) : (
-                            <p className="text-sm text-zinc-400 italic">Nenhuma manutenção registrada.</p>
+                            <p className="text-sm text-zinc-400 italic">Nenhuma leitura de horímetro registrada.</p>
                           )}
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <Wrench size={14} />
+                      Histórico de Manutenção
+                    </h4>
+                    <div className="max-h-[300px] overflow-y-auto pr-2 no-scrollbar hover:scrollbar-thin">
+                      <div className="space-y-3">
+                        {selectedGenerator.maintenanceHistory.length > 0 ? selectedGenerator.maintenanceHistory.map((m) => (
+                          <div key={m.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h5 className="font-bold text-zinc-900 text-sm">{m.description}</h5>
+                                <p className="text-xs text-zinc-500 mt-1">Técnico: {m.technician}</p>
+                              </div>
+                              <span className="text-[10px] text-zinc-400 font-medium">{format(new Date(m.date), "dd MMM yyyy", { locale: ptBR })}</span>
+                            </div>
+                            {m.cost && (
+                              <div className="mt-2 text-xs font-bold text-brand-primary">
+                                R$ {m.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </div>
+                            )}
+                          </div>
+                        )) : (
+                          <p className="text-sm text-zinc-400 italic">Nenhuma manutenção registrada.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 
   const renderChecklists = () => (
@@ -2925,6 +2982,7 @@ export default function App() {
           {activeTab === 'employees' && renderEmployees()}
           {activeTab === 'rentals' && renderRentals()}
           {activeTab === 'documentation' && renderDocumentation()}
+          {renderGeneratorDetailModal()}
           {renderSignatureModal()}
           {renderMaintenanceForm()}
           {renderChecklistSelector()}

@@ -115,7 +115,8 @@ export const mockRentals: Rental[] = [
     clientId: 'client-1',
     startDate: '2026-01-10',
     responsibleName: 'Marcos Silva',
-    isIndefinite: true,
+    isIndefinite: false,
+    endDate: '2026-04-25', // Expiring in a few days from Apr 17
     status: 'Ativo',
     value: 4500
   }
