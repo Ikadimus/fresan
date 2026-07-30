@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Zap, 
@@ -23,10 +23,15 @@ import {
   Mail,
   Lock,
   AlertCircle,
-  LogOut
+  LogOut,
+  Database,
+  Filter
 } from 'lucide-react';
+import { SupabaseSettingsModal } from './components/SupabaseSettingsModal';
+import { supabaseService, isSupabaseConfigured } from './lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import SignaturePad from 'react-signature-pad-wrapper';
+const SignaturePadComponent = SignaturePad as any;
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { 
@@ -169,84 +174,7 @@ export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
   const [rentals, setRentals] = useState<Rental[]>(mockRentals);
   const [clients, setClients] = useState<Client[]>(mockClients);
-  const [signedDocuments, setSignedDocuments] = useState<SignedDocument[]>([
-    {
-      id: 'DOC-SIMULATED',
-      date: new Date().toISOString(),
-      generatorId: 'GEN-001',
-      technicianName: 'Ricardo Lima',
-      responsibleName: 'Marcos Silva',
-      companyName: 'Construtora ABC',
-      technicianSignature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-      responsibleSignature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-      title: 'Manutenção Corretiva e Checklist - Cummins C150',
-      docType: 'Relatório',
-      maintenanceDetails: {
-        id: 'MNT-SIM',
-        date: new Date().toISOString(),
-        description: 'Troca de sensor de pressão de óleo e revisão geral do sistema elétrico.',
-        technician: 'Ricardo Lima',
-        type: 'Corretiva',
-        cost: 1550,
-        parts: [
-          { id: 'p1', name: 'Sensor de Pressão de Óleo', value: 450 },
-          { id: 'p2', name: 'Filtro de Óleo', value: 150 }
-        ],
-        services: [
-          { id: 's1', name: 'Mão de obra especializada', value: 950 }
-        ]
-      },
-      fullChecklist: {
-        id: 'CHK-SIM',
-        generatorId: 'GEN-001',
-        templateId: 'tmpl-3',
-        date: new Date().toISOString(),
-        employeeId: 'emp-3',
-        answers: {
-          'q9': 'true', 'q10': 'true', 'q11': 'true', 'q12': 'false', 'q13': 'true',
-          'q14': '26.5', 'q15': '85', 'q16': 'true', 'q17': 'true', 'q18': 'true',
-          'q19': '60', 'q20': '220', 'q21': '1250', 'q22': 'true',
-          'q23': 'Equipamento operando em perfeitas condições após a troca do sensor.'
-        }
-      }
-    },
-    {
-      id: 'DOC-1',
-      date: new Date(Date.now() - 86400000).toISOString(),
-      generatorId: 'GEN-001',
-      technicianName: 'Ricardo Lima',
-      responsibleName: 'Marcos Silva',
-      companyName: 'Construtora ABC',
-      technicianSignature: '',
-      responsibleSignature: '',
-      title: 'Checklist de Entrega - Cummins C150',
-      docType: 'Checklist'
-    },
-    {
-      id: 'DOC-2',
-      date: new Date(Date.now() - 172800000).toISOString(),
-      generatorId: 'GEN-003',
-      technicianName: 'João Silva',
-      responsibleName: 'Ana Oliveira',
-      companyName: 'Shopping Center Norte',
-      technicianSignature: '',
-      responsibleSignature: '',
-      title: 'Relatório Técnico: Preventiva Mensal',
-      docType: 'Relatório'
-    },
-    {
-      id: 'DOC-3',
-      date: new Date(Date.now() - 259200000).toISOString(),
-      generatorId: 'GEN-002',
-      technicianName: 'Carlos Souza',
-      responsibleName: 'Pedro Santos',
-      companyName: 'Fazenda Santa Maria',
-      technicianSignature: '',
-      responsibleSignature: '',
-      title: 'Orçamento: Troca de Bateria',
-      docType: 'Orçamento'
-    }
-  ]);
+  const [signedDocuments, setSignedDocuments] = useState<SignedDocument[]>([]);
   const [selectedGenerator, setSelectedGenerator] = useState<Generator | null>(null);
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
 
@@ -301,6 +229,298 @@ export default function App() {
   const technicianSigRef = React.useRef<SignaturePad>(null);
   const responsibleSigRef = React.useRef<SignaturePad>(null);
 
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+
+  // Generator Search and Filter State
+  const [genSearchTerm, setGenSearchTerm] = useState('');
+  const [genFilter, setGenFilter] = useState<'todos' | 'Alugado' | 'Disponível' | 'Manutenção' | 'ultima_movimentacao'>('todos');
+
+  // Generator Form State
+  const [newGenModel, setNewGenModel] = useState('');
+  const [newGenSerial, setNewGenSerial] = useState('');
+  const [newGenPower, setNewGenPower] = useState('');
+  const [newGenYear, setNewGenYear] = useState('');
+  const [newGenLocation, setNewGenLocation] = useState('');
+
+  // Rental Form State
+  const [newRentalClientId, setNewRentalClientId] = useState('');
+  const [newRentalGeneratorId, setNewRentalGeneratorId] = useState('');
+  const [newRentalStartDate, setNewRentalStartDate] = useState('');
+  const [newRentalResponsible, setNewRentalResponsible] = useState('');
+  const [newRentalValue, setNewRentalValue] = useState('');
+  const [newRentalEndDate, setNewRentalEndDate] = useState('');
+
+  // Client Form State
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientCnpj, setNewClientCnpj] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientAddress, setNewClientAddress] = useState('');
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [openClientMenuId, setOpenClientMenuId] = useState<string | null>(null);
+
+  // Employee Form State
+  const [showNewEmployeeForm, setShowNewEmployeeForm] = useState(false);
+  const [newEmpName, setNewEmpName] = useState('');
+  const [newEmpRole, setNewEmpRole] = useState<'Técnico' | 'Gerente' | 'Admin'>('Técnico');
+  const [newEmpEmail, setNewEmpEmail] = useState('');
+  const [newEmpPassword, setNewEmpPassword] = useState('');
+
+  // Template Form State
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newQuestionText, setNewQuestionText] = useState('');
+  const [newQuestionType, setNewQuestionType] = useState<'boolean' | 'text' | 'number'>('boolean');
+
+  // Handlers for persistent Supabase actions
+  const handleCreateGenerator = async () => {
+    if (!newGenModel || !newGenSerial) return;
+    const newGen: Generator = {
+      id: `GEN-00${generators.length + 1}`,
+      model: newGenModel,
+      serialNumber: newGenSerial,
+      powerKva: Number(newGenPower) || 100,
+      year: Number(newGenYear) || new Date().getFullYear(),
+      status: 'Disponível',
+      currentLocation: newGenLocation || 'Pátio Central',
+      maintenanceHistory: [],
+      locationHistory: [{
+        id: `LOC-${Date.now()}`,
+        date: new Date().toISOString(),
+        location: newGenLocation || 'Pátio Central',
+        type: 'Movimentação'
+      }],
+      hourMeterHistory: []
+    };
+
+    setGenerators([...generators, newGen]);
+    await supabaseService.saveGenerator(newGen);
+    setShowNewGeneratorForm(false);
+    setNewGenModel('');
+    setNewGenSerial('');
+    setNewGenPower('');
+    setNewGenYear('');
+    setNewGenLocation('');
+  };
+
+  const handleDeleteGenerator = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (confirm('Tem certeza que deseja excluir este gerador?')) {
+      setGenerators(generators.filter(g => g.id !== id));
+      if (selectedGenerator?.id === id) setSelectedGenerator(null);
+      await supabaseService.deleteGenerator(id);
+    }
+  };
+
+  const handleCreateRental = async () => {
+    if (!newRentalClientId || !newRentalGeneratorId) return;
+    const client = clients.find(c => c.id === newRentalClientId);
+    const gen = generators.find(g => g.id === newRentalGeneratorId);
+    if (!client || !gen) return;
+
+    const newRental: Rental = {
+      id: `LOC-${Date.now()}`,
+      generatorId: gen.id,
+      companyName: client.name,
+      clientId: client.id,
+      startDate: newRentalStartDate || new Date().toISOString(),
+      responsibleName: newRentalResponsible,
+      endDate: isRentalIndefinite ? undefined : newRentalEndDate,
+      isIndefinite: isRentalIndefinite,
+      status: 'Ativo',
+      value: Number(newRentalValue) || 0
+    };
+
+    const updatedGen: Generator = {
+      ...gen,
+      status: 'Alugado',
+      currentLocation: client.name,
+      locationHistory: [
+        {
+          id: `LOC-HIST-${Date.now()}`,
+          date: new Date().toISOString(),
+          location: client.name,
+          company: client.name,
+          type: 'Envio'
+        },
+        ...gen.locationHistory
+      ]
+    };
+
+    setRentals([newRental, ...rentals]);
+    setGenerators(generators.map(g => g.id === gen.id ? updatedGen : g));
+
+    await supabaseService.saveRental(newRental);
+    await supabaseService.saveGenerator(updatedGen);
+
+    setShowNewRentalForm(false);
+    setIsRentalIndefinite(false);
+    setNewRentalClientId('');
+    setNewRentalGeneratorId('');
+    setNewRentalStartDate('');
+    setNewRentalResponsible('');
+    setNewRentalValue('');
+    setNewRentalEndDate('');
+  };
+
+  const handleDeleteRental = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir esta locação?')) {
+      setRentals(rentals.filter(r => r.id !== id));
+      await supabaseService.deleteRental(id);
+    }
+  };
+
+  const handleCreateClient = async () => {
+    if (!newClientName) return;
+    const newClient: Client = {
+      id: `CLI-${Date.now()}`,
+      name: newClientName,
+      cnpj: newClientCnpj || '00.000.000/0001-00',
+      email: newClientEmail,
+      phone: newClientPhone,
+      address: newClientAddress
+    };
+
+    setClients([...clients, newClient]);
+    await supabaseService.saveClient(newClient);
+
+    setShowNewClientForm(false);
+    setNewClientName('');
+    setNewClientCnpj('');
+    setNewClientEmail('');
+    setNewClientPhone('');
+    setNewClientAddress('');
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este cliente?')) {
+      setClients(clients.filter(c => c.id !== id));
+      await supabaseService.deleteClient(id);
+    }
+  };
+
+  const handleUpdateClient = async () => {
+    if (!editingClient || !editingClient.name) return;
+    const updatedClients = clients.map(c => c.id === editingClient.id ? editingClient : c);
+    setClients(updatedClients);
+    await supabaseService.saveClient(editingClient);
+    setEditingClient(null);
+  };
+
+  const handleCreateEmployee = async () => {
+    if (!newEmpName || !newEmpEmail) return;
+    const newEmp: Employee = {
+      id: `emp-${Date.now()}`,
+      name: newEmpName,
+      role: newEmpRole,
+      email: newEmpEmail,
+      password: newEmpPassword || '123456'
+    };
+
+    setEmployees([...employees, newEmp]);
+    await supabaseService.saveEmployee(newEmp);
+
+    setShowNewEmployeeForm(false);
+    setNewEmpName('');
+    setNewEmpRole('Técnico');
+    setNewEmpEmail('');
+    setNewEmpPassword('');
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este funcionário?')) {
+      setEmployees(employees.filter(e => e.id !== id));
+      await supabaseService.deleteEmployee(id);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!newTemplateName) return;
+    const newTmpl: ChecklistTemplate = {
+      id: `tmpl-${Date.now()}`,
+      name: newTemplateName,
+      questions: [
+        { id: `q-${Date.now()}-1`, text: 'Nível do óleo lubrificante adequado?', type: 'boolean' },
+        { id: `q-${Date.now()}-2`, text: 'Nível de combustível (L)', type: 'number' },
+        { id: `q-${Date.now()}-3`, text: 'Observações gerais do painel', type: 'text' }
+      ]
+    };
+
+    setTemplates([...templates, newTmpl]);
+    await supabaseService.saveChecklistTemplate(newTmpl);
+
+    setShowNewTemplateForm(false);
+    setNewTemplateName('');
+  };
+
+  const handleAddQuestionToTemplate = async () => {
+    if (!editingTemplate || !newQuestionText) return;
+    const updatedQuestions = [
+      ...editingTemplate.questions,
+      { id: `q-${Date.now()}`, text: newQuestionText, type: newQuestionType }
+    ];
+    const updatedTmpl = { ...editingTemplate, questions: updatedQuestions };
+    setEditingTemplate(updatedTmpl);
+    setTemplates(templates.map(t => t.id === updatedTmpl.id ? updatedTmpl : t));
+    await supabaseService.saveChecklistTemplate(updatedTmpl);
+    setNewQuestionText('');
+  };
+
+  const handleDeleteQuestionFromTemplate = async (qId: string) => {
+    if (!editingTemplate) return;
+    const updatedQuestions = editingTemplate.questions.filter(q => q.id !== qId);
+    const updatedTmpl = { ...editingTemplate, questions: updatedQuestions };
+    setEditingTemplate(updatedTmpl);
+    setTemplates(templates.map(t => t.id === updatedTmpl.id ? updatedTmpl : t));
+    await supabaseService.saveChecklistTemplate(updatedTmpl);
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este modelo de checklist?')) {
+      setTemplates(templates.filter(t => t.id !== id));
+      await supabaseService.deleteChecklistTemplate(id);
+    }
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este documento assinado?')) {
+      setSignedDocuments(signedDocuments.filter(d => d.id !== id));
+      await supabaseService.deleteSignedDocument(id);
+    }
+  };
+
+  // Load initial data from Supabase if configured
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      const loadSupabaseData = async () => {
+        const dbGenerators = await supabaseService.fetchGenerators();
+        if (dbGenerators && dbGenerators.length > 0) {
+          setGenerators(dbGenerators);
+        }
+        const dbRentals = await supabaseService.fetchRentals();
+        if (dbRentals && dbRentals.length > 0) {
+          setRentals(dbRentals);
+        }
+        const dbClients = await supabaseService.fetchClients();
+        if (dbClients && dbClients.length > 0) {
+          setClients(dbClients);
+        }
+        const dbEmployees = await supabaseService.fetchEmployees();
+        if (dbEmployees && dbEmployees.length > 0) {
+          setEmployees(dbEmployees);
+        }
+        const dbDocs = await supabaseService.fetchSignedDocuments();
+        if (dbDocs && dbDocs.length > 0) {
+          setSignedDocuments(dbDocs);
+        }
+        const dbTemplates = await supabaseService.fetchChecklistTemplates();
+        if (dbTemplates && dbTemplates.length > 0) {
+          setTemplates(dbTemplates);
+        }
+      };
+      loadSupabaseData();
+    }
+  }, []);
+
   // Stats for Dashboard
   const stats = {
     total: generators.length,
@@ -339,6 +559,7 @@ export default function App() {
     };
 
     setSignedDocuments([newDoc, ...signedDocuments]);
+    supabaseService.saveSignedDocument(newDoc);
     setShowSignatureModal(false);
     setSignatureData(null);
     alert('Documento assinado e salvo com sucesso! Você pode baixá-lo na aba de Documentação ou no Histórico de Checklists.');
@@ -366,6 +587,7 @@ export default function App() {
   const handleUpdateEmployee = () => {
     if (!editingEmployeeData) return;
     setEmployees(employees.map(emp => emp.id === editingEmployeeData.id ? editingEmployeeData : emp));
+    supabaseService.saveEmployee(editingEmployeeData);
     setViewingEmployee(editingEmployeeData);
     setIsEditingEmployee(false);
   };
@@ -1068,30 +1290,61 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase">Modelo</label>
-                  <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: Cummins C150" />
+                  <input 
+                    type="text" 
+                    value={newGenModel}
+                    onChange={(e) => setNewGenModel(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="Ex: Cummins C150" 
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase">Nº de Série</label>
-                  <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: SN-123456" />
+                  <input 
+                    type="text" 
+                    value={newGenSerial}
+                    onChange={(e) => setNewGenSerial(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="Ex: SN-123456" 
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase">Potência (kVA)</label>
-                  <input type="number" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: 150" />
+                  <input 
+                    type="number" 
+                    value={newGenPower}
+                    onChange={(e) => setNewGenPower(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="Ex: 150" 
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase">Ano</label>
-                  <input type="number" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: 2023" />
+                  <input 
+                    type="number" 
+                    value={newGenYear}
+                    onChange={(e) => setNewGenYear(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="Ex: 2023" 
+                  />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Localização Atual</label>
-                <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: Pátio Central" />
+                <input 
+                  type="text" 
+                  value={newGenLocation}
+                  onChange={(e) => setNewGenLocation(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Ex: Pátio Central" 
+                />
               </div>
               <button 
-                onClick={() => setShowNewGeneratorForm(false)}
-                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4"
+                onClick={handleCreateGenerator}
+                disabled={!newGenModel || !newGenSerial}
+                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4 disabled:opacity-50"
               >
                 Cadastrar Gerador
               </button>
@@ -1124,14 +1377,21 @@ export default function App() {
             <div className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Nome do Modelo</label>
-                <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: Checklist de Entrega" />
+                <input 
+                  type="text" 
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Ex: Checklist de Entrega" 
+                />
               </div>
               <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
                 <p className="text-xs text-zinc-500 italic">Após criar o modelo, você poderá adicionar e editar as perguntas na tela de gerenciamento.</p>
               </div>
               <button 
-                onClick={() => setShowNewTemplateForm(false)}
-                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4"
+                onClick={handleCreateTemplate}
+                disabled={!newTemplateName}
+                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4 disabled:opacity-50"
               >
                 Criar Modelo
               </button>
@@ -1171,33 +1431,65 @@ export default function App() {
                     {idx + 1}
                   </div>
                   <div className="flex-1">
-                    <input 
-                      type="text" 
-                      defaultValue={q.text}
-                      className="w-full bg-transparent border-none focus:ring-0 text-sm font-medium text-zinc-900 p-0"
-                    />
+                    <p className="text-sm font-medium text-zinc-900">{q.text}</p>
                     <div className="flex gap-2 mt-1">
                       <span className="text-[10px] font-bold uppercase text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded">
-                        {q.type}
+                        {q.type === 'boolean' ? 'SIM/NÃO' : q.type === 'number' ? 'NÚMERO' : 'TEXTO'}
                       </span>
                     </div>
                   </div>
-                  <button className="p-2 text-zinc-300 hover:text-red-500 transition-colors">
+                  <button 
+                    onClick={() => handleDeleteQuestionFromTemplate(q.id)}
+                    className="p-2 text-zinc-300 hover:text-red-500 transition-colors"
+                    title="Excluir Pergunta"
+                  >
                     <Trash2 size={18} />
                   </button>
                 </div>
               ))}
-              <button className="w-full py-3 border-2 border-dashed border-zinc-200 rounded-2xl text-zinc-400 hover:text-zinc-600 hover:border-zinc-300 transition-all flex items-center justify-center gap-2 text-sm font-bold">
-                <Plus size={18} />
-                Adicionar Pergunta
-              </button>
+
+              <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-3">
+                <p className="text-xs font-bold text-zinc-400 uppercase">Adicionar Nova Pergunta</p>
+                <input 
+                  type="text" 
+                  value={newQuestionText}
+                  onChange={(e) => setNewQuestionText(e.target.value)}
+                  placeholder="Digite a pergunta..." 
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:border-brand-primary"
+                />
+                <div className="flex items-center gap-4">
+                  <label className="text-xs font-bold text-zinc-500">Tipo de Resposta:</label>
+                  <select 
+                    value={newQuestionType}
+                    onChange={(e) => setNewQuestionType(e.target.value as any)}
+                    className="px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold outline-none"
+                  >
+                    <option value="boolean">Sim / Não (Check)</option>
+                    <option value="text">Texto Livre</option>
+                    <option value="number">Valor / Número</option>
+                  </select>
+                  <button 
+                    onClick={handleAddQuestionToTemplate}
+                    disabled={!newQuestionText}
+                    className="ml-auto px-4 py-1.5 bg-brand-primary text-brand-secondary rounded-lg font-bold text-xs hover:scale-105 transition-transform disabled:opacity-50"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="p-6 border-t border-zinc-100">
+            <div className="p-6 border-t border-zinc-100 flex gap-3">
+              <button 
+                onClick={() => handleDeleteTemplate(editingTemplate.id)}
+                className="px-4 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"
+              >
+                <Trash2 size={16} /> Excluir Modelo
+              </button>
               <button 
                 onClick={() => setShowEditTemplateForm(false)}
-                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform"
+                className="flex-1 py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform"
               >
-                Salvar Alterações
+                Concluir Edição
               </button>
             </div>
           </motion.div>
@@ -1228,14 +1520,22 @@ export default function App() {
             <div className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Cliente</label>
-                <select className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none">
+                <select 
+                  value={newRentalClientId}
+                  onChange={(e) => setNewRentalClientId(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none"
+                >
                   <option value="">Selecione um cliente</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Gerador</label>
-                <select className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none">
+                <select 
+                  value={newRentalGeneratorId}
+                  onChange={(e) => setNewRentalGeneratorId(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none"
+                >
                   <option value="">Selecione um gerador disponível</option>
                   {generators.filter(g => g.status === 'Disponível').map(g => <option key={g.id} value={g.id}>{g.model} ({g.id})</option>)}
                 </select>
@@ -1243,16 +1543,33 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase">Data Início</label>
-                  <input type="date" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+                  <input 
+                    type="date" 
+                    value={newRentalStartDate}
+                    onChange={(e) => setNewRentalStartDate(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-zinc-400 uppercase">Responsável</label>
-                  <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Nome do responsável" />
+                  <input 
+                    type="text" 
+                    value={newRentalResponsible}
+                    onChange={(e) => setNewRentalResponsible(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="Nome do responsável" 
+                  />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Valor Mensal</label>
-                <input type="number" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="R$ 0,00" />
+                <input 
+                  type="number" 
+                  value={newRentalValue}
+                  onChange={(e) => setNewRentalValue(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="R$ 0,00" 
+                />
               </div>
 
               <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
@@ -1271,12 +1588,15 @@ export default function App() {
                 <input 
                   type="date" 
                   disabled={isRentalIndefinite}
+                  value={newRentalEndDate}
+                  onChange={(e) => setNewRentalEndDate(e.target.value)}
                   className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none disabled:opacity-50 disabled:bg-zinc-100 disabled:cursor-not-allowed" 
                 />
               </div>
               <button 
-                onClick={() => { setShowNewRentalForm(false); setIsRentalIndefinite(false); }}
-                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4"
+                onClick={handleCreateRental}
+                disabled={!newRentalClientId || !newRentalGeneratorId}
+                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4 disabled:opacity-50"
               >
                 Confirmar Locação
               </button>
@@ -1309,32 +1629,157 @@ export default function App() {
             <div className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Nome / Razão Social</label>
-                <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+                <input 
+                  type="text" 
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Ex: Construtora ABC" 
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">CNPJ</label>
-                <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" placeholder="00.000.000/0000-00" />
+                <input 
+                  type="text" 
+                  value={newClientCnpj}
+                  onChange={(e) => setNewClientCnpj(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="00.000.000/0000-00" 
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-400 uppercase">E-mail</label>
-                  <input type="email" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+                  <label className="text-xs font-bold text-zinc-400 uppercase">Telefone</label>
+                  <input 
+                    type="text" 
+                    value={newClientPhone}
+                    onChange={(e) => setNewClientPhone(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="(11) 99999-9999" 
+                  />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-400 uppercase">Telefone</label>
-                  <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+                  <label className="text-xs font-bold text-zinc-400 uppercase">E-mail</label>
+                  <input 
+                    type="email" 
+                    value={newClientEmail}
+                    onChange={(e) => setNewClientEmail(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="contato@cliente.com" 
+                  />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-400 uppercase">Endereço</label>
-                <input type="text" className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+                <input 
+                  type="text" 
+                  value={newClientAddress}
+                  onChange={(e) => setNewClientAddress(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Av. Paulista, 1000 - SP" 
+                />
               </div>
               <button 
-                onClick={() => setShowNewClientForm(false)}
-                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4"
+                onClick={handleCreateClient}
+                disabled={!newClientName}
+                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4 disabled:opacity-50"
               >
                 Cadastrar Cliente
               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
+  const renderEditClientModal = () => (
+    <AnimatePresence>
+      {editingClient && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-brand-secondary/90 backdrop-blur-md"
+            onClick={() => setEditingClient(null)}
+          />
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-lg rounded-3xl shadow-2xl z-10 overflow-hidden"
+          >
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-zinc-900">Editar Cliente</h3>
+              <button onClick={() => setEditingClient(null)} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-400 uppercase">Nome / Razão Social</label>
+                <input 
+                  type="text" 
+                  value={editingClient.name}
+                  onChange={(e) => setEditingClient({ ...editingClient, name: e.target.value })}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Ex: Construtora ABC" 
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-400 uppercase">CNPJ</label>
+                <input 
+                  type="text" 
+                  value={editingClient.cnpj}
+                  onChange={(e) => setEditingClient({ ...editingClient, cnpj: e.target.value })}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="00.000.000/0000-00" 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-400 uppercase">Telefone</label>
+                  <input 
+                    type="text" 
+                    value={editingClient.phone}
+                    onChange={(e) => setEditingClient({ ...editingClient, phone: e.target.value })}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="(11) 99999-9999" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-400 uppercase">E-mail</label>
+                  <input 
+                    type="email" 
+                    value={editingClient.email}
+                    onChange={(e) => setEditingClient({ ...editingClient, email: e.target.value })}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="contato@cliente.com" 
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-400 uppercase">Endereço</label>
+                <input 
+                  type="text" 
+                  value={editingClient.address}
+                  onChange={(e) => setEditingClient({ ...editingClient, address: e.target.value })}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Av. Paulista, 1000 - SP" 
+                />
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => setEditingClient(null)}
+                  className="flex-1 py-3 border border-zinc-200 text-zinc-600 rounded-xl font-bold text-sm hover:bg-zinc-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleUpdateClient}
+                  disabled={!editingClient.name}
+                  className="flex-1 py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform disabled:opacity-50"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -1463,7 +1908,7 @@ export default function App() {
                     placeholder="Nome do técnico..."
                   />
                   <div className="border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 h-40">
-                    <SignaturePad 
+                    <SignaturePadComponent 
                       ref={technicianSigRef}
                       options={{ penColor: 'black' }}
                     />
@@ -1483,7 +1928,7 @@ export default function App() {
                     placeholder="Nome do responsável..."
                   />
                   <div className="border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 h-40">
-                    <SignaturePad 
+                    <SignaturePadComponent 
                       ref={responsibleSigRef}
                       options={{ penColor: 'black' }}
                     />
@@ -1688,21 +2133,16 @@ export default function App() {
                     services: maintenanceServices
                   };
                   
-                  const updatedGenerators = generators.map(g => {
-                    if (g.id === selectedGenerator.id) {
-                      return {
-                        ...g,
-                        maintenanceHistory: [newMaintenance, ...g.maintenanceHistory]
-                      };
-                    }
-                    return g;
-                  });
-                  
-                  setGenerators(updatedGenerators);
-                  setSelectedGenerator({
+                  const updatedGen: Generator = {
                     ...selectedGenerator,
                     maintenanceHistory: [newMaintenance, ...selectedGenerator.maintenanceHistory]
-                  });
+                  };
+                  
+                  const updatedGenerators = generators.map(g => g.id === selectedGenerator.id ? updatedGen : g);
+                  
+                  setGenerators(updatedGenerators);
+                  setSelectedGenerator(updatedGen);
+                  supabaseService.saveGenerator(updatedGen);
                   
                   const activeRental = rentals.find(r => r.generatorId === selectedGenerator.id && r.status === 'Ativo');
                   
@@ -1894,174 +2334,248 @@ export default function App() {
     </AnimatePresence>
   );
 
-  const renderDashboard = () => (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-zinc-50 rounded-lg text-zinc-600">
-              <Zap size={20} />
-            </div>
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total</span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-3xl font-bold text-zinc-900">{stats.total}</h3>
-            <p className="text-sm text-zinc-500 mt-1">Geradores cadastrados</p>
-          </div>
-        </Card>
-        <Card className="flex flex-col justify-between border-l-4 border-l-emerald-500">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
-              <CheckCircle2 size={20} />
-            </div>
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Disponíveis</span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-3xl font-bold text-zinc-900">{stats.available}</h3>
-            <p className="text-sm text-zinc-500 mt-1">Prontos para locação</p>
-          </div>
-        </Card>
-        <Card className="flex flex-col justify-between border-l-4 border-l-blue-500">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-              <Truck size={20} />
-            </div>
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Alugados</span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-3xl font-bold text-zinc-900">{stats.rented}</h3>
-            <p className="text-sm text-zinc-500 mt-1">Em operação externa</p>
-          </div>
-        </Card>
-        <Card className="flex flex-col justify-between border-l-4 border-l-amber-500">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
-              <Wrench size={20} />
-            </div>
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Manutenção</span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-3xl font-bold text-zinc-900">{stats.maintenance}</h3>
-            <p className="text-sm text-zinc-500 mt-1">Em reparo ou revisão</p>
-          </div>
-        </Card>
-      </div>
+  const renderDashboard = () => {
+    const recentMovements = generators
+      .flatMap(g => (g.locationHistory || []).map(lh => ({ ...lh, gen: g })))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 10);
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2">
-          <div className="mb-6">
-            <h4 className="text-lg font-bold text-zinc-900">Vencimento de Contratos</h4>
-            <p className="text-xs text-zinc-500 mt-1">Locações ativas próximas do fim</p>
-            
-            <div className="mt-6 p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Ver contratos vencendo em até:</span>
-                <span className="text-sm font-black text-brand-primary">{contractFilterDays} dias</span>
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="flex flex-col justify-between">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-zinc-50 rounded-lg text-zinc-600">
+                <Zap size={20} />
               </div>
-              <input 
-                type="range" 
-                min="5" 
-                max="90" 
-                step="5"
-                value={contractFilterDays}
-                onChange={(e) => setContractFilterDays(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
-              />
-              <div className="flex justify-between mt-1 px-1">
-                <span className="text-[9px] font-bold text-zinc-400">5 d</span>
-                <span className="text-[9px] font-bold text-zinc-400">90 d</span>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total</span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-3xl font-bold text-zinc-900">{stats.total}</h3>
+              <p className="text-sm text-zinc-500 mt-1">Geradores cadastrados</p>
+            </div>
+          </Card>
+          <Card className="flex flex-col justify-between border-l-4 border-l-emerald-500">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                <CheckCircle2 size={20} />
+              </div>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Disponíveis</span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-3xl font-bold text-zinc-900">{stats.available}</h3>
+              <p className="text-sm text-zinc-500 mt-1">Prontos para locação</p>
+            </div>
+          </Card>
+          <Card className="flex flex-col justify-between border-l-4 border-l-blue-500">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                <Truck size={20} />
+              </div>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Alugados</span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-3xl font-bold text-zinc-900">{stats.rented}</h3>
+              <p className="text-sm text-zinc-500 mt-1">Em operação externa</p>
+            </div>
+          </Card>
+          <Card className="flex flex-col justify-between border-l-4 border-l-amber-500">
+            <div className="flex justify-between items-start">
+              <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+                <Wrench size={20} />
+              </div>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Manutenção</span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-3xl font-bold text-zinc-900">{stats.maintenance}</h3>
+              <p className="text-sm text-zinc-500 mt-1">Em reparo ou revisão</p>
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Vencimento de Contratos */}
+          <Card className="flex flex-col">
+            <div className="mb-4">
+              <h4 className="text-lg font-bold text-zinc-900">Vencimento de Contratos</h4>
+              <p className="text-xs text-zinc-500 mt-0.5">Locações ativas próximas do fim</p>
+              
+              <div className="mt-4 p-3 bg-zinc-50 rounded-2xl border border-zinc-100">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Ver contratos em até:</span>
+                  <span className="text-xs font-black text-brand-primary">{contractFilterDays} dias</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="5" 
+                  max="90" 
+                  step="5"
+                  value={contractFilterDays}
+                  onChange={(e) => setContractFilterDays(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                />
+                <div className="flex justify-between mt-0.5 px-1">
+                  <span className="text-[9px] font-bold text-zinc-400">5 d</span>
+                  <span className="text-[9px] font-bold text-zinc-400">90 d</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="space-y-3 overflow-y-auto max-h-[350px] pr-2 custom-scrollbar">
-            {rentals
-              .filter(r => r.status === 'Ativo' && !r.isIndefinite && r.endDate)
-              .map(r => {
-                const daysLeft = differenceInDays(new Date(r.endDate!), new Date());
-                const gen = generators.find(g => g.id === r.generatorId);
-                return { ...r, daysLeft, gen };
-              })
-              .filter(r => r.daysLeft >= 0 && r.daysLeft <= contractFilterDays)
-              .sort((a, b) => a.daysLeft - b.daysLeft)
-              .map(item => (
-                <div 
-                  key={item.id} 
-                  className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between hover:bg-white hover:shadow-md transition-all group cursor-pointer"
-                  onClick={() => item.gen && setSelectedGenerator(item.gen)}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-xl ${
-                      item.daysLeft <= 7 ? 'bg-red-50 text-red-600' : 'bg-brand-primary/10 text-brand-primary'
-                    }`}>
-                      <Truck size={20} />
+            <div className="space-y-3 overflow-y-auto max-h-[320px] pr-1 custom-scrollbar flex-1">
+              {rentals
+                .filter(r => r.status === 'Ativo' && !r.isIndefinite && r.endDate)
+                .map(r => {
+                  const daysLeft = differenceInDays(new Date(r.endDate!), new Date());
+                  const gen = generators.find(g => g.id === r.generatorId);
+                  return { ...r, daysLeft, gen };
+                })
+                .filter(r => r.daysLeft >= 0 && r.daysLeft <= contractFilterDays)
+                .sort((a, b) => a.daysLeft - b.daysLeft)
+                .map(item => (
+                  <div 
+                    key={item.id} 
+                    className="p-3 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between hover:bg-white hover:shadow-md transition-all group cursor-pointer"
+                    onClick={() => item.gen && setSelectedGenerator(item.gen)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`p-2.5 rounded-xl shrink-0 ${
+                        item.daysLeft <= 7 ? 'bg-red-50 text-red-600' : 'bg-brand-primary/10 text-brand-primary'
+                      }`}>
+                        <Truck size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="font-bold text-zinc-900 text-xs truncate">{item.companyName}</h5>
+                        <p className="text-[11px] text-zinc-500 truncate">{item.gen?.model} ({item.gen?.id})</p>
+                      </div>
                     </div>
-                    <div>
-                      <h5 className="font-bold text-zinc-900 text-sm">{item.companyName}</h5>
-                      <p className="text-xs text-zinc-500">{item.gen?.model} ({item.gen?.id})</p>
+                    <div className="text-right shrink-0 ml-2">
+                      <div className={`text-xs font-black ${
+                        item.daysLeft <= 7 ? 'text-red-600' : 'text-zinc-900'
+                      }`}>
+                        {item.daysLeft === 0 ? 'Vence hoje' : `Faltam ${item.daysLeft}d`}
+                      </div>
+                      <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">
+                        {format(new Date(item.endDate!), "dd/MM/yyyy")}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-black ${
-                      item.daysLeft <= 7 ? 'text-red-600' : 'text-zinc-900'
-                    }`}>
-                      {item.daysLeft === 0 ? 'Vence hoje' : `Faltam ${item.daysLeft} dias`}
-                    </div>
-                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">
-                      Término: {format(new Date(item.endDate!), "dd/MM/yyyy")}
-                    </p>
+                ))}
+              
+              {rentals.filter(r => r.status === 'Ativo' && !r.isIndefinite && r.endDate && differenceInDays(new Date(r.endDate!), new Date()) <= contractFilterDays).length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 text-zinc-400">
+                  <div className="w-12 h-12 bg-zinc-50 rounded-full flex items-center justify-center mb-2">
+                    <ClipboardCheck size={24} />
                   </div>
+                  <p className="text-xs font-medium">Nenhum contrato vencendo neste período.</p>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Últimas Movimentações de Geradores */}
+          <Card className="flex flex-col">
+            <div className="mb-4">
+              <h4 className="text-lg font-bold text-zinc-900">Últimas Movimentações</h4>
+              <p className="text-xs text-zinc-500 mt-0.5">Histórico recente de posições da frota</p>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto max-h-[380px] pr-1 custom-scrollbar flex-1">
+              {recentMovements.map((item, idx) => {
+                let dateDisplay = item.date;
+                try {
+                  const d = new Date(item.date);
+                  if (!isNaN(d.getTime())) {
+                    dateDisplay = format(d, "dd/MM/yyyy");
+                  }
+                } catch {}
+
+                return (
+                  <div 
+                    key={item.id || `mov-${idx}`} 
+                    className="p-3 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center justify-between hover:bg-white hover:shadow-md transition-all group cursor-pointer"
+                    onClick={() => item.gen && setSelectedGenerator(item.gen)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`p-2.5 rounded-xl shrink-0 ${
+                        item.type === 'Entrega' ? 'bg-emerald-50 text-emerald-600' :
+                        item.type === 'Retirada' ? 'bg-amber-50 text-amber-600' :
+                        'bg-purple-50 text-purple-600'
+                      }`}>
+                        {item.type === 'Entrega' ? <Truck size={18} /> :
+                         item.type === 'Retirada' ? <ArrowRightLeft size={18} /> :
+                         <MapPin size={18} />}
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="font-bold text-zinc-900 text-xs truncate">{item.gen?.model || 'Gerador'}</h5>
+                        <p className="text-[11px] text-zinc-500 truncate">{item.location}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                        item.type === 'Entrega' ? 'bg-emerald-100 text-emerald-700' :
+                        item.type === 'Retirada' ? 'bg-amber-100 text-amber-700' :
+                        'bg-purple-100 text-purple-700'
+                      }`}>
+                        {item.type}
+                      </span>
+                      <p className="text-[9px] text-zinc-400 font-medium mt-1">
+                        {dateDisplay}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {recentMovements.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 text-zinc-400">
+                  <div className="w-12 h-12 bg-zinc-50 rounded-full flex items-center justify-center mb-2">
+                    <MapPin size={24} />
+                  </div>
+                  <p className="text-xs font-medium">Nenhuma movimentação recente.</p>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Distribuição */}
+          <Card className="flex flex-col">
+            <h4 className="text-lg font-bold text-zinc-900 mb-2">Distribuição da Frota</h4>
+            <div className="h-[240px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={75}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 space-y-2">
+              {pieData.map((item) => (
+                <div key={item.name} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span className="text-zinc-600 text-xs">{item.name}</span>
+                  </div>
+                  <span className="font-bold text-zinc-900 text-xs">{item.value}</span>
                 </div>
               ))}
-            
-            {rentals.filter(r => r.status === 'Ativo' && !r.isIndefinite && r.endDate && differenceInDays(new Date(r.endDate!), new Date()) <= contractFilterDays).length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
-                <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
-                  <ClipboardCheck size={32} />
-                </div>
-                <p className="text-sm font-medium">Nenhum contrato vencendo neste período.</p>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <h4 className="text-lg font-bold text-zinc-900 mb-6">Distribuição</h4>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-4 space-y-2">
-            {pieData.map((item) => (
-              <div key={item.name} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-zinc-600">{item.name}</span>
-                </div>
-                <span className="font-bold text-zinc-900">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
+            </div>
+          </Card>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const handleSaveHourMeter = () => {
     if (!selectedGenerator || !hourMeterValue) return;
@@ -2076,21 +2590,16 @@ export default function App() {
       technician: currentUser?.name || 'Técnico'
     };
 
-    const updatedGenerators = generators.map(g => {
-      if (g.id === selectedGenerator.id) {
-        return {
-          ...g,
-          hourMeterHistory: [newReading, ...(g.hourMeterHistory || [])]
-        };
-      }
-      return g;
-    });
-
-    setGenerators(updatedGenerators);
-    setSelectedGenerator({
+    const updatedGen: Generator = {
       ...selectedGenerator,
       hourMeterHistory: [newReading, ...(selectedGenerator.hourMeterHistory || [])]
-    });
+    };
+
+    const updatedGenerators = generators.map(g => g.id === selectedGenerator.id ? updatedGen : g);
+
+    setGenerators(updatedGenerators);
+    setSelectedGenerator(updatedGen);
+    supabaseService.saveGenerator(updatedGen);
     setShowHourMeterForm(false);
     setHourMeterValue('');
   };
@@ -2212,101 +2721,172 @@ export default function App() {
     </AnimatePresence>
   );
 
-  const renderRIG = () => (
-    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center gap-4 bg-white p-2 rounded-2xl border border-zinc-100 shadow-sm">
-        <div className="pl-4 text-zinc-400">
-          <Search size={20} />
-        </div>
-        <input 
-          type="text" 
-          placeholder="Buscar por modelo, série ou ID..." 
-          className="flex-1 py-2 outline-none text-sm text-zinc-900"
-        />
-      </div>
+  const renderRIG = () => {
+    let filteredGenerators = generators.filter(gen => {
+      const search = genSearchTerm.toLowerCase().trim();
+      const matchesSearch = !search || 
+        gen.model.toLowerCase().includes(search) || 
+        gen.serialNumber.toLowerCase().includes(search) || 
+        gen.id.toLowerCase().includes(search) ||
+        gen.currentLocation.toLowerCase().includes(search);
 
-      <div className="grid grid-cols-1 gap-4">
-        {generators.map((gen) => {
-          const activeRental = rentals.find(r => r.generatorId === gen.id && r.status === 'Ativo');
-          
-          let statusInfo = null;
-          if (gen.status === 'Alugado' && activeRental) {
-            statusInfo = (
-              <div className="mt-1 text-[10px] text-brand-primary font-medium flex flex-wrap gap-x-2">
-                <span>Cliente: {activeRental.companyName}</span>
-                <span>Resp: {activeRental.responsibleName || '-'}</span>
-                <span>Desde: {format(new Date(activeRental.startDate), "dd/MM/yyyy", { locale: ptBR })}</span>
-                <span className="font-bold flex items-center gap-1">
-                  Término: {activeRental.isIndefinite ? 
-                    <span className="bg-brand-primary/10 px-1 rounded text-[9px]">INDETERMINADO</span> : 
-                    (activeRental.endDate ? format(new Date(activeRental.endDate), "dd/MM/yyyy", { locale: ptBR }) : '-')
-                  }
-                </span>
-              </div>
-            );
-          } else if (gen.status === 'Disponível') {
-            const lastMovement = [...gen.locationHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-            if (lastMovement) {
-              statusInfo = (
-                <div className="mt-1 text-[10px] text-emerald-600 font-medium">
-                  Disponível desde: {format(new Date(lastMovement.date), "dd/MM/yyyy", { locale: ptBR })}
-                </div>
-              );
-            }
-          } else if (gen.status === 'Manutenção') {
-            const lastMaint = [...gen.maintenanceHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-            if (lastMaint) {
-              statusInfo = (
-                <div className="mt-1 text-[10px] text-amber-600 font-medium">
-                  Em manutenção desde: {format(new Date(lastMaint.date), "dd/MM/yyyy", { locale: ptBR })}
-                </div>
-              );
-            }
-          }
+      if (!matchesSearch) return false;
 
-          return (
-            <Card key={gen.id} className="hover:border-brand-primary/30 transition-all cursor-pointer group" onClick={() => setSelectedGenerator(gen)}>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-600 group-hover:bg-brand-secondary group-hover:text-white transition-colors">
-                    <Zap size={24} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-zinc-900">{gen.model}</h3>
-                      <Badge status={gen.status} />
-                    </div>
-                    <p className="text-xs text-zinc-500 mt-0.5">Série: {gen.serialNumber} • ID: {gen.id}</p>
-                    {statusInfo}
-                  </div>
-                </div>
-                
-                <div className="flex flex-col md:items-end gap-1">
-                <div className="flex items-center gap-1.5 text-sm text-zinc-600">
-                  <MapPin size={14} />
-                  <span>{gen.currentLocation}</span>
-                </div>
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="text-xs text-zinc-400 flex items-center gap-1">
-                    <History size={12} />
-                    <span>{gen.locationHistory.length} Movimentações</span>
-                  </div>
-                  <div className="text-xs text-zinc-400 flex items-center gap-1">
-                    <Wrench size={12} />
-                    <span>{gen.maintenanceHistory.length} Manutenções</span>
-                  </div>
-                </div>
-              </div>
+      if (genFilter === 'Alugado') return gen.status === 'Alugado';
+      if (genFilter === 'Disponível') return gen.status === 'Disponível';
+      if (genFilter === 'Manutenção') return gen.status === 'Manutenção';
 
-              <div className="hidden md:block text-zinc-300 group-hover:text-brand-primary transition-colors">
-                <ChevronRight size={24} />
-              </div>
+      return true;
+    });
+
+    if (genFilter === 'ultima_movimentacao') {
+      filteredGenerators = [...filteredGenerators].sort((a, b) => {
+        const dateA = a.locationHistory && a.locationHistory.length > 0 
+          ? Math.max(...a.locationHistory.map(lh => new Date(lh.date).getTime() || 0)) 
+          : 0;
+        const dateB = b.locationHistory && b.locationHistory.length > 0 
+          ? Math.max(...b.locationHistory.map(lh => new Date(lh.date).getTime() || 0)) 
+          : 0;
+        return dateB - dateA;
+      });
+    }
+
+    return (
+      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-zinc-100 shadow-sm">
+          <div className="flex-1 flex items-center gap-3 pl-2">
+            <div className="text-zinc-400 shrink-0">
+              <Search size={20} />
             </div>
-          </Card>
-        )})}
+            <input 
+              type="text" 
+              value={genSearchTerm}
+              onChange={(e) => setGenSearchTerm(e.target.value)}
+              placeholder="Buscar por modelo, série, ID ou local..." 
+              className="w-full py-1.5 outline-none text-sm text-zinc-900 bg-transparent"
+            />
+            {genSearchTerm && (
+              <button 
+                onClick={() => setGenSearchTerm('')}
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-full shrink-0"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="sm:border-l sm:border-zinc-100 pl-2 pr-1 flex items-center gap-2 border-t sm:border-t-0 border-zinc-100 pt-2 sm:pt-0 shrink-0">
+            <Filter size={16} className="text-zinc-400 shrink-0 hidden sm:block" />
+            <select
+              value={genFilter}
+              onChange={(e) => setGenFilter(e.target.value as any)}
+              className="w-full sm:w-auto py-2 px-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 outline-none focus:ring-2 focus:ring-brand-primary cursor-pointer hover:bg-zinc-100 transition-colors"
+            >
+              <option value="todos">Todos os Geradores</option>
+              <option value="Alugado">Somente Alugados</option>
+              <option value="Disponível">Somente Disponíveis</option>
+              <option value="Manutenção">Somente em Manutenção</option>
+              <option value="ultima_movimentacao">Ordenar por Última Movimentação</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {filteredGenerators.map((gen) => {
+            const activeRental = rentals.find(r => r.generatorId === gen.id && r.status === 'Ativo');
+            
+            let statusInfo = null;
+            if (gen.status === 'Alugado' && activeRental) {
+              statusInfo = (
+                <div className="mt-1 text-[10px] text-brand-primary font-medium flex flex-wrap gap-x-2">
+                  <span>Cliente: {activeRental.companyName}</span>
+                  <span>Resp: {activeRental.responsibleName || '-'}</span>
+                  <span>Início: {format(new Date(activeRental.startDate), "dd/MM/yyyy", { locale: ptBR })}</span>
+                  <span className="font-bold flex items-center gap-1">
+                    Término: {activeRental.isIndefinite ? 
+                      <span className="bg-brand-primary/10 px-1 rounded text-[9px]">INDETERMINADO</span> : 
+                      (activeRental.endDate ? format(new Date(activeRental.endDate), "dd/MM/yyyy", { locale: ptBR }) : '-')
+                    }
+                  </span>
+                </div>
+              );
+            } else if (gen.status === 'Disponível') {
+              const lastMovement = [...gen.locationHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+              if (lastMovement) {
+                statusInfo = (
+                  <div className="mt-1 text-[10px] text-emerald-600 font-medium">
+                    Disponível em: {format(new Date(lastMovement.date), "dd/MM/yyyy", { locale: ptBR })}
+                  </div>
+                );
+              }
+            } else if (gen.status === 'Manutenção') {
+              const lastMaint = [...gen.maintenanceHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+              if (lastMaint) {
+                statusInfo = (
+                  <div className="mt-1 text-[10px] text-amber-600 font-medium">
+                    Em manutenção em: {format(new Date(lastMaint.date), "dd/MM/yyyy", { locale: ptBR })}
+                  </div>
+                );
+              }
+            }
+
+            return (
+              <Card key={gen.id} className="hover:border-brand-primary/30 transition-all cursor-pointer group" onClick={() => setSelectedGenerator(gen)}>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-600 group-hover:bg-brand-secondary group-hover:text-white transition-colors">
+                      <Zap size={24} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-zinc-900">{gen.model}</h3>
+                        <Badge status={gen.status} />
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-0.5">Série: {gen.serialNumber} • ID: {gen.id}</p>
+                      {statusInfo}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col md:items-end gap-1">
+                    <div className="flex items-center gap-1.5 text-sm text-zinc-600">
+                      <MapPin size={14} />
+                      <span>{gen.currentLocation}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="text-xs text-zinc-400 flex items-center gap-1">
+                        <History size={12} />
+                        <span>{gen.locationHistory.length} Movimentações</span>
+                      </div>
+                      <div className="text-xs text-zinc-400 flex items-center gap-1">
+                        <Wrench size={12} />
+                        <span>{gen.maintenanceHistory.length} Manutenções</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="hidden md:block text-zinc-300 group-hover:text-brand-primary transition-colors">
+                    <ChevronRight size={24} />
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+
+          {filteredGenerators.length === 0 && (
+            <div className="bg-white rounded-2xl border border-zinc-100 p-12 text-center">
+              <div className="w-12 h-12 bg-zinc-50 rounded-full flex items-center justify-center mx-auto mb-3 text-zinc-400">
+                <Search size={24} />
+              </div>
+              <h3 className="font-bold text-zinc-900 text-sm">Nenhum gerador encontrado</h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                Tente ajustar os termos da busca ou alterar o filtro selecionado.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderGeneratorDetailModal = () => (
     <AnimatePresence>
@@ -2574,10 +3154,94 @@ export default function App() {
     </div>
   );
 
+  const renderNewEmployeeForm = () => (
+    <AnimatePresence>
+      {showNewEmployeeForm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-brand-secondary/90 backdrop-blur-md"
+            onClick={() => setShowNewEmployeeForm(false)}
+          />
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-lg rounded-3xl shadow-2xl z-10 overflow-hidden"
+          >
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-zinc-900">Novo Funcionário</h3>
+              <button onClick={() => setShowNewEmployeeForm(false)} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-400 uppercase">Nome Completo</label>
+                <input 
+                  type="text" 
+                  value={newEmpName}
+                  onChange={(e) => setNewEmpName(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="Ex: Carlos Silva" 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-400 uppercase">Cargo</label>
+                  <select 
+                    value={newEmpRole}
+                    onChange={(e) => setNewEmpRole(e.target.value as any)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none"
+                  >
+                    <option value="Técnico">Técnico</option>
+                    <option value="Gerente">Gerente</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-zinc-400 uppercase">E-mail</label>
+                  <input 
+                    type="email" 
+                    value={newEmpEmail}
+                    onChange={(e) => setNewEmpEmail(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                    placeholder="carlos@fresan.com" 
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-400 uppercase">Senha de Acesso</label>
+                <input 
+                  type="password" 
+                  value={newEmpPassword}
+                  onChange={(e) => setNewEmpPassword(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primary outline-none" 
+                  placeholder="••••••••" 
+                />
+              </div>
+              <button 
+                onClick={handleCreateEmployee}
+                disabled={!newEmpName || !newEmpEmail}
+                className="w-full py-3 bg-brand-primary text-brand-secondary rounded-xl font-bold text-sm hover:scale-[1.02] transition-transform mt-4 disabled:opacity-50"
+              >
+                Cadastrar Funcionário
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
   const renderEmployees = () => (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-zinc-900">Gestão de Funcionários</h2>
+        <button 
+          onClick={() => setShowNewEmployeeForm(true)}
+          className="flex items-center gap-2 bg-brand-primary text-brand-secondary px-4 py-2.5 rounded-xl font-bold text-sm hover:scale-105 transition-transform"
+        >
+          <Plus size={18} /> Novo Funcionário
+        </button>
       </div>
 
       <Card className="overflow-hidden p-0">
@@ -2609,12 +3273,20 @@ export default function App() {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-zinc-500">{emp.email}</td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-right flex justify-end gap-2">
                   <button 
                     onClick={() => setViewingEmployee(emp)}
                     className="p-2 hover:bg-zinc-200 rounded-lg transition-colors text-zinc-400 hover:text-zinc-900"
+                    title="Editar"
                   >
                     <Settings size={16} />
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteEmployee(emp.id)}
+                    className="p-2 hover:bg-red-50 rounded-lg transition-colors text-zinc-400 hover:text-red-600"
+                    title="Excluir"
+                  >
+                    <Trash2 size={16} />
                   </button>
                 </td>
               </tr>
@@ -2723,9 +3395,45 @@ export default function App() {
                     <p className="text-xs text-zinc-500">{client.email}</p>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="p-2 hover:bg-zinc-200 rounded-lg transition-colors text-zinc-400 hover:text-zinc-900">
-                      <Settings size={16} />
-                    </button>
+                    <div className="relative inline-block text-left">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenClientMenuId(openClientMenuId === client.id ? null : client.id);
+                        }}
+                        className="p-2 hover:bg-zinc-200 rounded-lg transition-colors text-zinc-400 hover:text-zinc-900"
+                        title="Opções do Cliente"
+                      >
+                        <Settings size={16} />
+                      </button>
+                      {openClientMenuId === client.id && (
+                        <div 
+                          className="absolute right-0 mt-1 w-36 bg-white rounded-2xl shadow-xl border border-zinc-100 py-1 z-30 animate-in fade-in zoom-in-95 duration-150"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button 
+                            onClick={() => {
+                              setEditingClient(client);
+                              setOpenClientMenuId(null);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
+                          >
+                            <Settings size={14} className="text-zinc-400" />
+                            Editar
+                          </button>
+                          <button 
+                            onClick={() => {
+                              handleDeleteClient(client.id);
+                              setOpenClientMenuId(null);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                          >
+                            <Trash2 size={14} className="text-red-500" />
+                            Apagar
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -2953,7 +3661,7 @@ export default function App() {
               </p>
             </div>
             
-            {activeTab !== 'dashboard' && activeTab !== 'documentation' && (
+            {activeTab !== 'dashboard' && activeTab !== 'documentation' && activeTab !== 'employees' && (
               <div className="hidden sm:block">
                 <button 
                   onClick={() => {
@@ -2969,8 +3677,7 @@ export default function App() {
                   <Plus size={18} />
                   {activeTab === 'rig' ? 'Novo Gerador' : 
                    activeTab === 'checklists' ? 'Novo Modelo' :
-                   activeTab === 'rentals' ? (rentalSubTab === 'clients' ? 'Novo Cliente' : 'Nova Locação') :
-                   activeTab === 'employees' ? 'Novo Funcionário' : 'Ação Rápida'}
+                   activeTab === 'rentals' ? (rentalSubTab === 'clients' ? 'Novo Cliente' : 'Nova Locação') : 'Ação Rápida'}
                 </button>
               </div>
             )}
@@ -2991,12 +3698,18 @@ export default function App() {
           {renderEditTemplateForm()}
           {renderNewRentalForm()}
           {renderNewClientForm()}
+          {renderEditClientModal()}
+          {renderNewEmployeeForm()}
           {renderRentalDetailModal()}
           {renderChecklistForm()}
           {renderDocumentViewModal()}
           {renderGlobalPDFTemplate()}
           {renderEmployeeDetailModal()}
           {renderHourMeterForm()}
+          <SupabaseSettingsModal 
+            isOpen={showSupabaseModal} 
+            onClose={() => setShowSupabaseModal(false)} 
+          />
         </div>
       </main>
     </div>
