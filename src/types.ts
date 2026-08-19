@@ -123,3 +123,57 @@ export interface Rental {
   status: 'Ativo' | 'Finalizado';
   value?: number;
 }
+
+export type InventoryCategory = 
+  | 'Baterias' 
+  | 'Filtros' 
+  | 'Lubrificantes' 
+  | 'Correias' 
+  | 'Arrefecimento' 
+  | 'Elétrica' 
+  | 'Mecânica' 
+  | 'Outros';
+
+export type InventoryUnit = 'un' | 'L' | 'kg' | 'kit' | 'm' | 'cx';
+
+export interface InventoryPart {
+  id: string;
+  name: string;
+  sku: string;
+  category: InventoryCategory;
+  quantity: number;
+  minQuantity: number;
+  unit: InventoryUnit;
+  unitCost: number;
+  location: string;
+  supplier?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface StockMovement {
+  id: string;
+  partId: string;
+  partName: string;
+  type: 'Entrada' | 'Saída' | 'Ajuste';
+  quantity: number;
+  date: string;
+  reason: string;
+  technician: string;
+  generatorId?: string;
+  unitCost?: number;
+}
+
+export interface RoutineMaintenanceItem {
+  id: string;
+  generatorId: string;
+  partName: string;
+  partCategory: InventoryCategory;
+  intervalMonths?: number;
+  intervalHours?: number;
+  lastReplacedDate: string;
+  lastReplacedHours?: number;
+  inventoryPartId?: string;
+  notes?: string;
+}
+

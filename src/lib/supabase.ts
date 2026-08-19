@@ -1,5 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Generator, Rental, Client, Employee, SignedDocument, ChecklistTemplate } from '../types';
+import { 
+  Generator, 
+  Rental, 
+  Client, 
+  Employee, 
+  SignedDocument, 
+  ChecklistTemplate,
+  InventoryPart,
+  StockMovement,
+  RoutineMaintenanceItem
+} from '../types';
 
 const supabaseUrl = 
   import.meta.env.VITE_SUPABASE_URL || 
@@ -93,62 +103,68 @@ CREATE TABLE IF NOT EXISTS checklist_templates (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS inventory_parts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  sku TEXT NOT NULL,
+  category TEXT NOT NULL,
+  quantity NUMERIC NOT NULL DEFAULT 0,
+  min_quantity NUMERIC NOT NULL DEFAULT 0,
+  unit TEXT NOT NULL DEFAULT 'un',
+  unit_cost NUMERIC NOT NULL DEFAULT 0,
+  location TEXT,
+  supplier TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id TEXT PRIMARY KEY,
+  part_id TEXT NOT NULL,
+  part_name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  quantity NUMERIC NOT NULL,
+  date TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  technician TEXT NOT NULL,
+  generator_id TEXT,
+  unit_cost NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS routine_maintenance_items (
+  id TEXT PRIMARY KEY,
+  generator_id TEXT NOT NULL,
+  part_name TEXT NOT NULL,
+  part_category TEXT NOT NULL,
+  interval_months INT,
+  interval_hours INT,
+  last_replaced_date TEXT NOT NULL,
+  last_replaced_hours NUMERIC,
+  inventory_part_id TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 ALTER TABLE generators ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rentals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE signed_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE checklist_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_parts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE routine_maintenance_items ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow public select generators" ON generators;
-DROP POLICY IF EXISTS "Allow public insert generators" ON generators;
-DROP POLICY IF EXISTS "Allow public update generators" ON generators;
-DROP POLICY IF EXISTS "Allow public delete generators" ON generators;
-CREATE POLICY "Allow public select generators" ON generators FOR SELECT USING (true);
-CREATE POLICY "Allow public insert generators" ON generators FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update generators" ON generators FOR UPDATE USING (true);
-CREATE POLICY "Allow public delete generators" ON generators FOR DELETE USING (true);
-
-DROP POLICY IF EXISTS "Allow public select rentals" ON rentals;
-DROP POLICY IF EXISTS "Allow public insert rentals" ON rentals;
-DROP POLICY IF EXISTS "Allow public update rentals" ON rentals;
-DROP POLICY IF EXISTS "Allow public delete rentals" ON rentals;
-CREATE POLICY "Allow public select rentals" ON rentals FOR SELECT USING (true);
-CREATE POLICY "Allow public insert rentals" ON rentals FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update rentals" ON rentals FOR UPDATE USING (true);
-CREATE POLICY "Allow public delete rentals" ON rentals FOR DELETE USING (true);
-
-DROP POLICY IF EXISTS "Allow public select clients" ON clients;
-DROP POLICY IF EXISTS "Allow public insert clients" ON clients;
-DROP POLICY IF EXISTS "Allow public update clients" ON clients;
-DROP POLICY IF EXISTS "Allow public delete clients" ON clients;
-CREATE POLICY "Allow public select clients" ON clients FOR SELECT USING (true);
-CREATE POLICY "Allow public insert clients" ON clients FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update clients" ON clients FOR UPDATE USING (true);
-CREATE POLICY "Allow public delete clients" ON clients FOR DELETE USING (true);
-
-DROP POLICY IF EXISTS "Allow public select employees" ON employees;
-DROP POLICY IF EXISTS "Allow public insert employees" ON employees;
-DROP POLICY IF EXISTS "Allow public update employees" ON employees;
-DROP POLICY IF EXISTS "Allow public delete employees" ON employees;
-CREATE POLICY "Allow public select employees" ON employees FOR SELECT USING (true);
-CREATE POLICY "Allow public insert employees" ON employees FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update employees" ON employees FOR UPDATE USING (true);
-CREATE POLICY "Allow public delete employees" ON employees FOR DELETE USING (true);
-
-DROP POLICY IF EXISTS "Allow public select signed_documents" ON signed_documents;
-DROP POLICY IF EXISTS "Allow public insert signed_documents" ON signed_documents;
-DROP POLICY IF EXISTS "Allow public update signed_documents" ON signed_documents;
-CREATE POLICY "Allow public select signed_documents" ON signed_documents FOR SELECT USING (true);
-CREATE POLICY "Allow public insert signed_documents" ON signed_documents FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update signed_documents" ON signed_documents FOR UPDATE USING (true);
-
-DROP POLICY IF EXISTS "Allow public select checklist_templates" ON checklist_templates;
-DROP POLICY IF EXISTS "Allow public insert checklist_templates" ON checklist_templates;
-DROP POLICY IF EXISTS "Allow public update checklist_templates" ON checklist_templates;
-CREATE POLICY "Allow public select checklist_templates" ON checklist_templates FOR SELECT USING (true);
-CREATE POLICY "Allow public insert checklist_templates" ON checklist_templates FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update checklist_templates" ON checklist_templates FOR UPDATE USING (true);
+CREATE POLICY "Allow public all generators" ON generators FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all rentals" ON rentals FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all clients" ON clients FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all employees" ON employees FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all signed_documents" ON signed_documents FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all checklist_templates" ON checklist_templates FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all inventory_parts" ON inventory_parts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all stock_movements" ON stock_movements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all routine_maintenance_items" ON routine_maintenance_items FOR ALL USING (true) WITH CHECK (true);
 `;
 
 // Supabase API Helper Service
@@ -379,6 +395,132 @@ export const supabaseService = {
       doc_type: doc.docType
     };
     const { error } = await supabase.from('signed_documents').upsert(payload);
+    return !error;
+  },
+
+  // Inventory Parts
+  async fetchInventoryParts(): Promise<InventoryPart[] | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('inventory_parts').select('*');
+    if (error || !data) return null;
+    return data.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      sku: item.sku,
+      category: item.category,
+      quantity: Number(item.quantity) || 0,
+      minQuantity: Number(item.min_quantity) || 0,
+      unit: item.unit || 'un',
+      unitCost: Number(item.unit_cost) || 0,
+      location: item.location || '',
+      supplier: item.supplier || '',
+      notes: item.notes || '',
+      createdAt: item.created_at
+    }));
+  },
+
+  async saveInventoryPart(part: InventoryPart): Promise<boolean> {
+    if (!supabase) return false;
+    const payload = {
+      id: part.id,
+      name: part.name,
+      sku: part.sku,
+      category: part.category,
+      quantity: part.quantity,
+      min_quantity: part.minQuantity,
+      unit: part.unit,
+      unit_cost: part.unitCost,
+      location: part.location,
+      supplier: part.supplier,
+      notes: part.notes
+    };
+    const { error } = await supabase.from('inventory_parts').upsert(payload);
+    return !error;
+  },
+
+  async deleteInventoryPart(id: string): Promise<boolean> {
+    if (!supabase) return false;
+    const { error } = await supabase.from('inventory_parts').delete().eq('id', id);
+    return !error;
+  },
+
+  // Stock Movements
+  async fetchStockMovements(): Promise<StockMovement[] | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('stock_movements').select('*').order('date', { ascending: false });
+    if (error || !data) return null;
+    return data.map((item: any) => ({
+      id: item.id,
+      partId: item.part_id,
+      partName: item.part_name,
+      type: item.type,
+      quantity: Number(item.quantity) || 0,
+      date: item.date,
+      reason: item.reason || '',
+      technician: item.technician || '',
+      generatorId: item.generator_id,
+      unitCost: item.unit_cost ? Number(item.unit_cost) : undefined
+    }));
+  },
+
+  async saveStockMovement(movement: StockMovement): Promise<boolean> {
+    if (!supabase) return false;
+    const payload = {
+      id: movement.id,
+      part_id: movement.partId,
+      part_name: movement.partName,
+      type: movement.type,
+      quantity: movement.quantity,
+      date: movement.date,
+      reason: movement.reason,
+      technician: movement.technician,
+      generator_id: movement.generatorId,
+      unit_cost: movement.unitCost
+    };
+    const { error } = await supabase.from('stock_movements').upsert(payload);
+    return !error;
+  },
+
+  // Routine Maintenance Items (Lembretes de Trocas Rotineiras como Baterias)
+  async fetchRoutineItems(): Promise<RoutineMaintenanceItem[] | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('routine_maintenance_items').select('*');
+    if (error || !data) return null;
+    return data.map((item: any) => ({
+      id: item.id,
+      generatorId: item.generator_id,
+      partName: item.part_name,
+      partCategory: item.part_category,
+      intervalMonths: item.interval_months ? Number(item.interval_months) : undefined,
+      intervalHours: item.interval_hours ? Number(item.interval_hours) : undefined,
+      lastReplacedDate: item.last_replaced_date,
+      lastReplacedHours: item.last_replaced_hours ? Number(item.last_replaced_hours) : undefined,
+      inventoryPartId: item.inventory_part_id,
+      notes: item.notes || ''
+    }));
+  },
+
+  async saveRoutineItem(item: RoutineMaintenanceItem): Promise<boolean> {
+    if (!supabase) return false;
+    const payload = {
+      id: item.id,
+      generator_id: item.generatorId,
+      part_name: item.partName,
+      part_category: item.partCategory,
+      interval_months: item.intervalMonths,
+      interval_hours: item.intervalHours,
+      last_replaced_date: item.lastReplacedDate,
+      last_replaced_hours: item.lastReplacedHours,
+      inventory_part_id: item.inventoryPartId,
+      notes: item.notes
+    };
+    const { error } = await supabase.from('routine_maintenance_items').upsert(payload);
+    return !error;
+  },
+
+  async deleteRoutineItem(id: string): Promise<boolean> {
+    if (!supabase) return false;
+    const { error } = await supabase.from('routine_maintenance_items').delete().eq('id', id);
     return !error;
   }
 };

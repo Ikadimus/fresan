@@ -25,9 +25,14 @@ import {
   AlertCircle,
   LogOut,
   Database,
-  Filter
+  Filter,
+  Boxes,
+  Clock,
+  Battery
 } from 'lucide-react';
 import { SupabaseSettingsModal } from './components/SupabaseSettingsModal';
+import { InventoryManager } from './components/InventoryManager';
+import { MaintenanceHub } from './components/MaintenanceHub';
 import { supabaseService, isSupabaseConfigured } from './lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import SignaturePad from 'react-signature-pad-wrapper';
@@ -63,14 +68,20 @@ import {
   MaintenanceEvent,
   DocType,
   Client,
-  HourMeterReading
+  HourMeterReading,
+  InventoryPart,
+  StockMovement,
+  RoutineMaintenanceItem
 } from './types';
 import { 
   mockGenerators, 
   mockChecklistTemplates, 
   mockEmployees, 
   mockRentals,
-  mockClients
+  mockClients,
+  mockInventoryParts,
+  mockStockMovements,
+  mockRoutineMaintenanceItems
 } from './lib/mockData';
 
 // --- Components ---
@@ -164,7 +175,7 @@ const Badge = ({ status }: { status: GeneratorStatus | string }) => {
 // --- Main App ---
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rig' | 'checklists' | 'employees' | 'rentals' | 'documentation'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rig' | 'checklists' | 'employees' | 'rentals' | 'documentation' | 'maintenance' | 'inventory'>('dashboard');
   const [checklistSubTab, setChecklistSubTab] = useState<'config' | 'history'>('config');
   const [rentalSubTab, setRentalSubTab] = useState<'active' | 'clients' | 'history'>('active');
   const [docFilter, setDocFilter] = useState<DocType | 'Todos'>('Todos');
@@ -175,6 +186,9 @@ export default function App() {
   const [rentals, setRentals] = useState<Rental[]>(mockRentals);
   const [clients, setClients] = useState<Client[]>(mockClients);
   const [signedDocuments, setSignedDocuments] = useState<SignedDocument[]>([]);
+  const [inventoryParts, setInventoryParts] = useState<InventoryPart[]>(mockInventoryParts);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>(mockStockMovements);
+  const [routineItems, setRoutineItems] = useState<RoutineMaintenanceItem[]>(mockRoutineMaintenanceItems);
   const [selectedGenerator, setSelectedGenerator] = useState<Generator | null>(null);
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
 
@@ -488,6 +502,96 @@ export default function App() {
     }
   };
 
+  // Inventory Handlers
+  const handleSaveInventoryPart = async (part: InventoryPart) => {
+    const existingIndex = inventoryParts.findIndex(p => p.id === part.id);
+    if (existingIndex >= 0) {
+      setInventoryParts(inventoryParts.map(p => p.id === part.id ? part : p));
+    } else {
+      setInventoryParts([part, ...inventoryParts]);
+    }
+    await supabaseService.saveInventoryPart(part);
+  };
+
+  const handleDeleteInventoryPart = async (id: string) => {
+    setInventoryParts(inventoryParts.filter(p => p.id !== id));
+    await supabaseService.deleteInventoryPart(id);
+  };
+
+  const handleSaveStockMovement = async (movement: StockMovement, updatedPart?: InventoryPart) => {
+    setStockMovements([movement, ...stockMovements]);
+    await supabaseService.saveStockMovement(movement);
+    if (updatedPart) {
+      setInventoryParts(inventoryParts.map(p => p.id === updatedPart.id ? updatedPart : p));
+      await supabaseService.saveInventoryPart(updatedPart);
+    }
+  };
+
+  // Routine Maintenance Handlers (Lembretes de Trocas Periódicas)
+  const handleSaveRoutineItem = async (item: RoutineMaintenanceItem) => {
+    const existingIndex = routineItems.findIndex(r => r.id === item.id);
+    if (existingIndex >= 0) {
+      setRoutineItems(routineItems.map(r => r.id === item.id ? item : r));
+    } else {
+      setRoutineItems([item, ...routineItems]);
+    }
+    await supabaseService.saveRoutineItem(item);
+  };
+
+  const handleDeleteRoutineItem = async (id: string) => {
+    setRoutineItems(routineItems.filter(r => r.id !== id));
+    await supabaseService.deleteRoutineItem(id);
+  };
+
+  const handleRecordMaintenanceFromHub = async (
+    generatorId: string, 
+    maintenance: MaintenanceEvent, 
+    usedPartId?: string, 
+    usedPartQty: number = 1
+  ) => {
+    // 1. Update generator maintenance history
+    const targetGen = generators.find(g => g.id === generatorId);
+    if (targetGen) {
+      const updatedGen: Generator = {
+        ...targetGen,
+        maintenanceHistory: [maintenance, ...(targetGen.maintenanceHistory || [])]
+      };
+      setGenerators(generators.map(g => g.id === generatorId ? updatedGen : g));
+      if (selectedGenerator?.id === generatorId) {
+        setSelectedGenerator(updatedGen);
+      }
+      await supabaseService.saveGenerator(updatedGen);
+    }
+
+    // 2. If part was used and deduct requested, create stock movement and decrease inventory
+    if (usedPartId) {
+      const part = inventoryParts.find(p => p.id === usedPartId);
+      if (part) {
+        const newQty = Math.max(0, part.quantity - usedPartQty);
+        const updatedPart: InventoryPart = {
+          ...part,
+          quantity: newQty
+        };
+        const movement: StockMovement = {
+          id: `MOV-${Date.now()}`,
+          partId: part.id,
+          partName: part.name,
+          type: 'Saída',
+          quantity: usedPartQty,
+          date: maintenance.date,
+          reason: `Uso em manutenção: ${maintenance.description}`,
+          technician: maintenance.technician,
+          generatorId: generatorId,
+          unitCost: part.unitCost
+        };
+        setStockMovements(prev => [movement, ...prev]);
+        setInventoryParts(prev => prev.map(p => p.id === part.id ? updatedPart : p));
+        await supabaseService.saveStockMovement(movement);
+        await supabaseService.saveInventoryPart(updatedPart);
+      }
+    }
+  };
+
   // Load initial data from Supabase if configured
   useEffect(() => {
     if (isSupabaseConfigured) {
@@ -515,6 +619,18 @@ export default function App() {
         const dbTemplates = await supabaseService.fetchChecklistTemplates();
         if (dbTemplates && dbTemplates.length > 0) {
           setTemplates(dbTemplates);
+        }
+        const dbParts = await supabaseService.fetchInventoryParts();
+        if (dbParts && dbParts.length > 0) {
+          setInventoryParts(dbParts);
+        }
+        const dbMovements = await supabaseService.fetchStockMovements();
+        if (dbMovements && dbMovements.length > 0) {
+          setStockMovements(dbMovements);
+        }
+        const dbRoutines = await supabaseService.fetchRoutineItems();
+        if (dbRoutines && dbRoutines.length > 0) {
+          setRoutineItems(dbRoutines);
         }
       };
       loadSupabaseData();
@@ -2573,6 +2689,132 @@ export default function App() {
             </div>
           </Card>
         </div>
+
+        {/* Seção Operacional: Lembretes de Trocas de Peças & Estoque */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Lembretes de Trocas Periódicas */}
+          <Card className="flex flex-col border border-zinc-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500/10 text-amber-600 rounded-xl">
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-zinc-900">Lembretes de Trocas Rotineiras</h4>
+                  <p className="text-xs text-zinc-500">Controle preventivo por tempo e horímetro (ex: baterias, correias, filtros)</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveTab('maintenance')}
+                className="text-xs font-bold text-brand-primary hover:underline flex items-center gap-1"
+              >
+                Gerenciar
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-3 flex-1">
+              {routineItems.slice(0, 3).map((item) => {
+                const isOverdue = item.estimatedNextDate ? new Date(item.estimatedNextDate) < new Date() : false;
+                return (
+                  <div 
+                    key={item.id}
+                    onClick={() => setActiveTab('maintenance')}
+                    className="p-3 bg-zinc-50 hover:bg-white hover:shadow-sm transition-all rounded-2xl border border-zinc-100 flex items-center justify-between cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-xl text-xs font-black ${
+                        item.partCategory === 'Bateria' ? 'bg-amber-100 text-amber-700' :
+                        item.partCategory === 'Filtros' ? 'bg-blue-100 text-blue-700' :
+                        item.partCategory === 'Óleo e Lubrificantes' ? 'bg-zinc-200 text-zinc-800' :
+                        'bg-purple-100 text-purple-700'
+                      }`}>
+                        {item.partCategory === 'Bateria' ? <Battery size={16} /> : <Wrench size={16} />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-zinc-900 group-hover:text-brand-primary transition-colors">
+                            {item.title}
+                          </span>
+                          <span className="text-[10px] font-bold text-zinc-500 bg-white px-2 py-0.5 rounded border border-zinc-200">
+                            {item.generatorModel} ({item.generatorId})
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-0.5">
+                          Troca a cada: <span className="font-semibold text-zinc-700">{item.intervalMonths ? `${item.intervalMonths} meses` : ''}{item.intervalHours ? ` ou ${item.intervalHours}h` : ''}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      {item.estimatedNextDate && (
+                        <div className={`text-[11px] font-black ${isOverdue ? 'text-red-600' : 'text-zinc-700'}`}>
+                          {isOverdue ? '⚠️ Vencido' : `Previsto: ${format(new Date(item.estimatedNextDate), "dd/MM/yy")}`}
+                        </div>
+                      )}
+                      <span className="text-[10px] text-zinc-400 font-medium">
+                        Última: {format(new Date(item.lastReplacedDate), "dd/MM/yyyy")}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Alertas de Estoque Baixo */}
+          <Card className="flex flex-col border border-zinc-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-xl">
+                  <Boxes size={20} />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-zinc-900">Almoxarifado & Reposição</h4>
+                  <p className="text-xs text-zinc-500">Itens em estoque e necessidades de compra</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveTab('inventory')}
+                className="text-xs font-bold text-brand-primary hover:underline flex items-center gap-1"
+              >
+                Ver Estoque
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-3 flex-1">
+              {inventoryParts.filter(p => p.quantity <= p.minQuantity).slice(0, 3).map((part) => (
+                <div 
+                  key={part.id}
+                  onClick={() => setActiveTab('inventory')}
+                  className="p-3 bg-red-50/50 hover:bg-red-50 rounded-2xl border border-red-100 flex items-center justify-between cursor-pointer transition-all"
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-zinc-900 truncate">{part.name}</span>
+                      <span className="px-1.5 py-0.5 bg-zinc-200 text-zinc-700 rounded text-[9px] font-bold shrink-0">{part.category}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 truncate mt-0.5">Local: {part.location} • Cód: {part.sku}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-black text-red-600">
+                      {part.quantity} {part.unit} (Mín: {part.minQuantity})
+                    </div>
+                    <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Reposição Necessária</span>
+                  </div>
+                </div>
+              ))}
+
+              {inventoryParts.filter(p => p.quantity <= p.minQuantity).length === 0 && (
+                <div className="text-center py-6 text-zinc-400">
+                  <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-1" />
+                  <p className="text-xs font-medium">Todos os itens de estoque estão em níveis adequados.</p>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
     );
   };
@@ -3511,6 +3753,18 @@ export default function App() {
               onClick={() => setActiveTab('rig')} 
             />
             <NavItem 
+              icon={Wrench} 
+              label="Manutenções" 
+              active={activeTab === 'maintenance'} 
+              onClick={() => setActiveTab('maintenance')} 
+            />
+            <NavItem 
+              icon={Boxes} 
+              label="Estoque" 
+              active={activeTab === 'inventory'} 
+              onClick={() => setActiveTab('inventory')} 
+            />
+            <NavItem 
               icon={ClipboardCheck} 
               label="Checklists" 
               active={activeTab === 'checklists'} 
@@ -3588,6 +3842,20 @@ export default function App() {
                   <span className="font-bold">Geradores</span>
                 </button>
                 <button
+                  onClick={() => { setActiveTab('maintenance'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'maintenance' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <Wrench size={20} />
+                  <span className="font-bold">Manutenções</span>
+                </button>
+                <button
+                  onClick={() => { setActiveTab('inventory'); setIsMenuOpen(false); }}
+                  className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'inventory' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  <Boxes size={20} />
+                  <span className="font-bold">Estoque</span>
+                </button>
+                <button
                   onClick={() => { setActiveTab('checklists'); setIsMenuOpen(false); }}
                   className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === 'checklists' ? 'bg-brand-primary text-brand-secondary' : 'text-zinc-400 hover:bg-white/5'}`}
                 >
@@ -3647,13 +3915,18 @@ export default function App() {
               <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
                 {activeTab === 'dashboard' && 'Visão Geral'}
                 {activeTab === 'rig' && 'Gestão de Ativos'}
+                {activeTab === 'maintenance' && 'Centro Operacional & Preventiva'}
+                {activeTab === 'inventory' && 'Almoxarifado & Peças'}
                 {activeTab === 'checklists' && 'Processos'}
                 {activeTab === 'rentals' && 'Operações'}
                 {activeTab === 'employees' && 'Equipe'}
+                {activeTab === 'documentation' && 'Arquivos'}
               </h2>
               <p className="text-3xl font-black text-zinc-900 tracking-tight">
                 {activeTab === 'dashboard' && 'Dashboard'}
                 {activeTab === 'rig' && 'Geradores'}
+                {activeTab === 'maintenance' && 'Manutenções & Trocas'}
+                {activeTab === 'inventory' && 'Estoque de Peças'}
                 {activeTab === 'checklists' && 'Checklists'}
                 {activeTab === 'rentals' && 'Locações'}
                 {activeTab === 'employees' && 'Funcionários'}
@@ -3661,7 +3934,7 @@ export default function App() {
               </p>
             </div>
             
-            {activeTab !== 'dashboard' && activeTab !== 'documentation' && activeTab !== 'employees' && (
+            {activeTab !== 'dashboard' && activeTab !== 'documentation' && activeTab !== 'employees' && activeTab !== 'maintenance' && activeTab !== 'inventory' && (
               <div className="hidden sm:block">
                 <button 
                   onClick={() => {
@@ -3685,6 +3958,32 @@ export default function App() {
 
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'rig' && renderRIG()}
+          {activeTab === 'maintenance' && (
+            <MaintenanceHub 
+              generators={generators}
+              routineItems={routineItems}
+              inventoryParts={inventoryParts}
+              currentUser={currentUser}
+              onSaveRoutineItem={handleSaveRoutineItem}
+              onDeleteRoutineItem={handleDeleteRoutineItem}
+              onRecordMaintenance={handleRecordMaintenanceFromHub}
+              onSelectGenerator={(gen) => {
+                setSelectedGenerator(gen);
+                setActiveTab('rig');
+              }}
+            />
+          )}
+          {activeTab === 'inventory' && (
+            <InventoryManager 
+              parts={inventoryParts}
+              movements={stockMovements}
+              generators={generators}
+              currentUser={currentUser}
+              onSavePart={handleSaveInventoryPart}
+              onDeletePart={handleDeleteInventoryPart}
+              onSaveMovement={handleSaveStockMovement}
+            />
+          )}
           {activeTab === 'checklists' && renderChecklists()}
           {activeTab === 'employees' && renderEmployees()}
           {activeTab === 'rentals' && renderRentals()}
